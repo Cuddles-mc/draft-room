@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Draft</title>
+<meta name="theme-color" content="#1f2a44">
+<link rel="manifest" href="live.webmanifest">
+<link rel="apple-touch-icon" href="icon192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Live Draft">
+<style>
+  html, body { margin: 0; background: #eef1f6; }
+  #landing { max-width: 560px; margin: 40px auto; padding: 0 16px; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1d2433; }
+  #landing h1 { font-size: 22px; margin: 0 0 8px; }
+  #landing input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; border: 1px solid #c9d2e0; border-radius: 6px; }
+  #landing button { margin-top: 8px; padding: 8px 14px; font: 600 14px system-ui, sans-serif; border: 0; border-radius: 6px; background: #2f6fed; color: #fff; }
+  #landing p { color: #5b6578; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="landing" hidden>
+  <h1>Live draft</h1>
+  <p>Open the link the draft host shared with you. It looks like <b>…/live.html#t=dr-…</b></p>
+  <p>Or paste it here:</p>
+  <input id="linkIn" placeholder="https://cuddles-mc.github.io/draft-room/live.html#t=dr-…" autocomplete="off">
+  <button id="go">Open</button>
+</div>
+<script src="data.js"></script>
+<script src="core.js"></script>
+<script>
+(() => {
+  const { mount, unpack, esc } = DraftCore;
+  const parseHash = h => Object.fromEntries(new URLSearchParams(String(h || "").replace(/^#/, "")));
+  let hash = parseHash(location.hash);
+  // opened from the home-screen app (no link in the address): reopen the last draft and team on this device
+  if (!hash.t) { try { const last = JSON.parse(localStorage.getItem("dhv:last") || "null"); if (last && last.t) hash = last; } catch (e) { /* ignore */ } }
+  const topic = /^dr-[0-9a-f]{24}$/.test(hash.t || "") ? hash.t : null;
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if (!topic) {
+    document.getElementById("landing").hidden = false;
+    document.getElementById("go").onclick = () => {
+      const v = document.getElementById("linkIn").value, i = v.indexOf("#");
+      if (i >= 0) { location.hash = v.slice(i); location.reload(); }
+    };
+    return;
+  }
+  const KEY = "dhv:" + topic;
+  let prefs = { myTeam: null, slot: null, tab: "best", view: null };
+  try { Object.assign(prefs, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* storage blocked: still works this visit */ }
+  if (hash.team) { prefs.myTeam = hash.team; prefs.view = null; }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prefs));
+    localStorage.setItem("dhv:last", JSON.stringify({ t: topic, ...(prefs.myTeam ? { team: prefs.myTeam } : {}) })); } catch (e) { /* ignore */ } };
+  save();
+
+  let feed = null, lastId = null, gotAt = 0, mode = "connecting";
+  const app = document.getElementById("app");
+  const panel = mount(app, {
+    mode: "page", prefs, save, title: "Live draft",
+    getFeed: () => feed,
+    status: S => {
+      if (!feed) return mode === "connecting" ? "connecting…" : "waiting for the host's draft room";
+      const secs = Math.round((Date.now() - (feed.at || gotAt)) / 1000);
+      return `${S.made}/${S.T * S.R} picks · updated ${secs < 60 ? secs + "s" : Math.round(secs / 60) + "m"} ago${feed.league ? " · " + feed.league : ""}`;
+    },
+    sig: () => (feed ? feed.at : ""),
+  });
+
+  function take(text, id) {
+    try {
+      const f = unpack(JSON.parse(text));
+      if (f && (!feed || (f.at || 0) >= (feed.at || 0))) { feed = f; gotAt = Date.now(); }
+      if (id) lastId = id;
+    } catch (e) { /* not a draft message */ }
+  }
+  async function poll() {
+    try {
+      const r = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=${lastId || "all"}`, { cache: "no-store" });
+      const lines = (await r.text()).trim().split("\n").filter(Boolean);
+      for (const l of lines) { const m = JSON.parse(l); if (m.event === "message") take(m.message, m.id); }
+      if (!feed) mode = "waiting";
+      panel.render(true);
+    } catch (e) { mode = "waiting"; }
+  }
+  function live() {
+    if (!window.EventSource) { setInterval(poll, 8000); return; }
+    const es = new EventSource(`https://ntfy.sh/${topic}/sse`);
+    es.onmessage = e => { try { const m = JSON.parse(e.data); if (m.event === "message") { take(m.message, m.id); panel.render(true); } } catch (x) { /* ignore */ } };
+    es.onerror = () => { /* the browser reconnects by itself; the poll below covers gaps */ };
+    setInterval(poll, 30000);
+  }
+  panel.render(true);
+  poll().then(live);
+  setInterval(() => panel.render(false), 5000);   // refresh the "updated Xs ago" line
+  window.addEventListener("hashchange", () => location.reload());
+})();
+</script>
+</body>
+</html>

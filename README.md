@@ -2,15 +2,21 @@
 
 Fantasy basketball draft tools for a 20-team ESPN H2H 11-cat league (9-cat + 3P% + DD, 10-man rosters).
 
-## Draft room page
-Open https://cuddles-mc.github.io/draft-room/ in any browser. Mark picks as they happen; it suggests your best pick. Picks save in your own browser.
-
-## ESPN draft room extension (Chrome)
-Adds a side panel to the ESPN draft room that follows the draft by itself: best pick for your team, your category balance, the draft buckets ticking off live, and a league table of every team.
+## 1. ESPN draft room extension (Chrome, for whoever runs it)
+Adds a side panel to the ESPN draft room that follows the draft by itself: best pick for your team, category balance, the draft buckets ticking off live (pink = injury risk in his healthy bucket, gold = rookie), a league table, and a **Share** tab that broadcasts the draft to the live page below.
 
 1. Download [draft-helper-extension.zip](https://github.com/Cuddles-mc/draft-room/raw/main/draft-helper-extension.zip) and unzip it.
 2. In Chrome go to `chrome://extensions` and turn on **Developer mode** (top right).
-3. Click **Load unpacked** and choose the unzipped `draft-helper-extension` folder.
-4. Open your ESPN draft room. The panel appears top right. Pick your team if it asks.
+3. Click **Load unpacked** and choose the unzipped `draft-helper-extension` folder. (Updating: replace the folder, then press the reload arrow on the extension card.)
+4. Open the ESPN draft room (practice drafts and mock drafts work too). The panel appears top right; pick your team if it asks.
+5. To share: **Share** tab → tick **Broadcast this draft** → copy the link (or each team's personal link) to the group chat.
 
-Collapse it with the – button. It only reads the draft page and ESPN's league data through your own login; nothing is sent anywhere else. Try it in an ESPN mock draft first.
+## 2. Live page (everyone else, phone or browser, no extension)
+Open the link the host shares (`https://cuddles-mc.github.io/draft-room/live.html#t=…`). Pick your team once, or use your personal link, and you'll see your own best pick, team balance, buckets and the league table, updating as picks happen (within about 15-20 seconds).
+
+**Put it on your phone like an app:** iPhone: Safari → Share → *Add to Home Screen*. Android: Chrome menu → *Install app* / *Add to Home screen*. It reopens your draft and team.
+
+## 3. Draft room page (manual)
+https://cuddles-mc.github.io/draft-room/ — mark picks yourself; saves in your browser.
+
+Updates travel through ntfy.sh, a free public relay: anyone with the link can see the picks; nothing else is sent.
