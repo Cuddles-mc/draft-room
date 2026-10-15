@@ -51,6 +51,31 @@ window.DraftCore = (() => {
     return { n, open: D.slots.filter((s, k) => owner[k] < 0) };
   }
   const openSlots = roster => match(roster.map(i => P[i].mask)).open;
+  function lineup(roster) {   // who starts where: best players placed first, the rest on the bench
+    const order = roster.slice().sort((a, b) => P[a].r - P[b].r), masks = order.map(i => P[i].mask);
+    const sm = D.slots.map(s => SLOT_MASK[s]), owner = new Array(sm.length).fill(-1);
+    const go = (pi, seen) => { for (let s = 0; s < sm.length; s++) if ((sm[s] & masks[pi]) && !seen[s]) { seen[s] = true;
+      if (owner[s] < 0 || go(owner[s], seen)) { owner[s] = pi; return true; } } return false; };
+    for (let k = 0; k < masks.length; k++) go(k, []);
+    // tidy for display: a better player in UTIL swaps into a named slot he can play (worse player moves to UTIL)
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let a = 0; a < sm.length; a++) for (let u = 0; u < sm.length; u++) {
+        if (sm[a] === 31 || sm[u] !== 31 || owner[a] < 0 || owner[u] < 0 || owner[u] > owner[a]) continue;
+        if (masks[owner[u]] & sm[a]) { [owner[a], owner[u]] = [owner[u], owner[a]]; changed = true; }
+      }
+    }
+    const used = new Set(owner.filter(o => o >= 0));
+    return { slots: D.slots.map((s, k) => ({ slot: s, pi: owner[k] >= 0 ? order[owner[k]] : null })),
+             bench: order.filter((_, k) => !used.has(k)) };
+  }
+  const lastName = n => { const w = n.replace(/\s+(Jr\.?|Sr\.?|II|III|IV)$/, "").split(" "); return w.length > 1 ? w.slice(1).join(" ") : n; };
+  function lineupHtml(roster, benchSlots) {
+    const L = lineup(roster);
+    const chip = (lab, pi, cls) => `<div class="ls ${pi == null ? "open" : cls || "f"}"><b>${lab}</b><span>${pi == null ? "open" : esc(lastName(P[pi].n))}</span></div>`;
+    const bench = Array.from({ length: Math.max(benchSlots, L.bench.length) }, (_, k) => chip("BE", L.bench[k] ?? null, "be"));
+    return `<div class="lineup">${L.slots.map(s => chip(s.slot, s.pi)).join("")}${bench.join("")}</div>`;
+  }
 
   function advice(S, teamId) {
     const roster = S.rosters.get(teamId) || [], k = roster.length;
@@ -126,6 +151,14 @@ window.DraftCore = (() => {
     .grid td.l, .grid th.l { text-align: left; }
     .grid tr.me td { font-weight: 700; }
     .hide { display: none !important; }
+    .lineup { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+    .ls { border: 1px solid #a6dcbc; background: #eaf7ef; border-radius: 6px; padding: 2px 6px; min-width: 52px; font-size: 11px; line-height: 1.25; }
+    .ls b { display: block; font-size: 10px; color: #0a7a3d; }
+    .ls.open { border: 1px dashed #f2b8b5; background: #fff5f5; color: #b42318; } .ls.open b { color: #b42318; }
+    .ls.be { border-color: #c9d2e0; background: #f5f7fb; } .ls.be b { color: #5b6578; }
+    .lgrid td { font-size: 10.5px; padding: 2px 3px; white-space: nowrap; text-align: center; }
+    .lgrid td.o { background: #fff5f5; color: #b42318; }
+    .lgrid td.l { text-align: left; }
     code { font-size: 11px; background: #f0f2f6; padding: 1px 4px; border-radius: 4px; word-break: break-all; }`;
 
   // mount a panel into `root` (a shadow root or an element). opts: { mode: "fixed"|"page", getFeed(), prefs, save(), status(), extraTabs:{key:{label,render(S),bind(body)}} }
@@ -168,7 +201,7 @@ window.DraftCore = (() => {
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
-        <p class="note">Open starting slots: ${open.join(", ") || "none, bench now"}</p>
+        ${lineupHtml(a.roster, S.R - D.slots.length)}
         <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead><tbody>${rows}</tbody></table>
         <p class="note">Fit = board value, leaning toward categories you're behind in. "Likely gone" = league ADP is before your pick.</p>`;
     }
@@ -182,7 +215,9 @@ window.DraftCore = (() => {
       const list = roster.map(i => { const p = P[i], helps = CATS.filter((c, j) => p.z[j] >= 0.8), hurts = CATS.filter((c, j) => p.z[j] <= -0.8);
         return `<tr><td class="n">${esc(p.n)}<span class="sub">${esc(p.p)} · ${esc(p.t || "")} · rank ${p.r}</span></td><td><span class="g">${helps.join(" ")}</span>${hurts.length ? `<br><span class="r">${hurts.join(" ")}</span>` : ""}</td></tr>`; }).join("");
       return `<div class="row">${picker("Team", id, "view")}</div>
-        <p class="note">${k} of ${S.R} picked · open starting slots: ${openSlots(roster).join(", ") || "none"}. Bars compare with an average team after the same number of picks.</p>
+        <p class="note">${k} of ${S.R} picked · open starting slots: ${openSlots(roster).join(", ") || "none"}</p>
+        ${lineupHtml(roster, S.R - D.slots.length)}
+        <p class="note">Bars compare with an average team after the same number of picks.</p>
         <div class="bars">${bars}</div>
         <table style="margin-top:8px"><thead><tr><th>Player</th><th>Helps / hurts</th></tr></thead><tbody>${list || `<tr><td colspan="2" class="note">No picks yet.</td></tr>`}</tbody></table>`;
     }
@@ -219,7 +254,13 @@ window.DraftCore = (() => {
       const cell = r => { const t = (r - 1) / Math.max(1, n - 1); return `<td style="background:${t < 0.34 ? "#c6efce" : t > 0.66 ? "#f8cbad" : "#fff"}">${r}</td>`; };
       const rows = ids.slice().sort((a, b) => tot(b) - tot(a)).map((id, k) => `<tr class="${id === S.my ? "me" : ""}"><td class="l"><a href="#" data-view="${esc(id)}">${esc(teamName(id))}</a></td>${CATS.map((c, j) => cell(rank(id, j))).join("")}<td>${k + 1}</td></tr>`).join("");
       return `<p class="note">Rank in each category from drafted players (1 = best; TO counts fewer as better). Tap a team for its page.</p>
-        <div style="overflow:auto"><table class="grid"><thead><tr><th class="l">Team</th>${CATS.map(c => `<th>${c}</th>`).join("")}<th>All</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        <div style="overflow:auto"><table class="grid"><thead><tr><th class="l">Team</th>${CATS.map(c => `<th>${c}</th>`).join("")}<th>All</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="big" style="margin-top:12px">Lineups</p>
+        <p class="note">Who fills each starting slot (best players placed first). Red = still open. BE = bench.</p>
+        <div style="overflow:auto"><table class="grid lgrid"><thead><tr><th class="l">Team</th>${D.slots.map(s => `<th>${s === "UTIL" ? "U" : s}</th>`).join("")}<th>BE</th></tr></thead><tbody>${
+          S.teams.map(t => t.id).map(id => { const L = lineup(S.rosters.get(id) || []);
+            return `<tr class="${id === S.my ? "me" : ""}"><td class="l"><a href="#" data-view="${esc(id)}">${esc(teamName(id))}</a></td>${L.slots.map(s => s.pi == null ? `<td class="o">–</td>` : `<td title="${esc(P[s.pi].n)}">${esc(lastName(P[s.pi].n))}</td>`).join("")}<td>${L.bench.map(i => esc(lastName(P[i].n))).join(", ")}</td></tr>`; }).join("")
+        }</tbody></table></div>`;
     }
 
     const views = { best, team, buckets, league };

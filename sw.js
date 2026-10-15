@@ -1,5 +1,5 @@
 // Live Draft app shell: network first (so board updates arrive), cached copy when offline. The ntfy relay is never cached.
-const CACHE = "live-draft-v1";
+const CACHE = "live-draft-v2";
 const SHELL = ["./live.html", "./data.js", "./core.js", "./live.webmanifest", "./icon192.png", "./icon512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
