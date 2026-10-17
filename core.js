@@ -176,6 +176,18 @@ window.DraftCore = (() => {
     .note { color: #5b6578; font-size: 11.5px; }
     .big { font-size: 13.5px; font-weight: 700; margin: 2px 0 6px; }
     .warnbox { background: #fff4e5; border: 1px solid #f5c48a; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+    .cg { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 2px; margin: 2px 0 4px; }
+    .cg.ch span { font-size: 9.5px; font-weight: 700; color: #556; text-align: center; letter-spacing: -.2px; }
+    .cc { font-size: 10px; text-align: center; padding: 2px 0; border-radius: 3px; font-variant-numeric: tabular-nums; border: 1.5px solid transparent; }
+    .cc.c2 { background: #2f9e5b; color: #fff; } .cc.c1 { background: #cdeed8; color: #145c31; } .cc.c0 { background: #eef0f4; color: #556; }
+    .cc.n1 { background: #fbd9d7; color: #8a1f17; } .cc.n2 { background: #d9534f; color: #fff; }
+    .cc.fix { border-color: #145c31; font-weight: 700; } .cc.dent { border-color: #8a1f17; font-weight: 700; }
+    .teamnow { margin: 8px 0; padding: 6px 8px; border: 1px solid #d5dbe6; border-radius: 6px; background: #fafbfd; }
+    .cmp input { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #c3cad8; border-radius: 6px; font: inherit; margin: 2px 0 8px; }
+    tr.cgrow td { padding-top: 0; }
+    tr.cghead td { padding: 1px 6px 0; }
+    button.x { border: 0; background: none; color: #8a1f17; font-weight: 700; cursor: pointer; padding: 0 4px; }
+    tbody.bgm { --bgc: #6b4bd1; --bgh: #e6defb; --bgl: #f7f4fe; }
     tr.bkhead td { font-weight: 600; font-size: 11.5px; padding: 3px 6px; color: #223; }
     tbody.bg td:first-child { border-left: 5px solid var(--bgc); }
     tbody.bg tr.bkhead td { background: var(--bgh); }
@@ -266,20 +278,40 @@ window.DraftCore = (() => {
          The top Fit is marked suggested; the best rookie and injury gamble below the top 10 are offered as reaches. */
       const top10 = a.list.slice(0, 10), inTop = new Set(top10.map(x => x.p.i));
       const reach = [["rookie", x => x.p.rk], ["injury", x => x.p.hl]].map(([kind, f]) => { const x = a.all.find(y => f(y) && !inTop.has(y.p.i)); return x ? { ...x, kind } : null; }).filter(Boolean);
-      const row = ({ p, fit }, k, kind) => {
-        const helps = CATS.filter((c, j) => p.z[j] >= 0.8), hurts = CATS.filter((c, j) => p.z[j] <= -0.8);
+      /* the category grid: your team against an average team after the same number of picks, in every category,
+         now and after each option. Green = ahead, red = behind (sum of per-category scores; TO counts fewer as
+         better). An outlined cell is where that pick turns a weak category round (green outline) or sinks one (red).
+         It is what the pick does to YOUR team, so you can choose on need, not only on the list order. */
+      const k = a.roster.length, tz = teamZ(a.roster), pzNow = parZ(S, Math.max(1, k)), pzAfter = parZ(S, k + 1);
+      const now = CATS.map((c, j) => (k ? tz[j] - pzNow[j] : 0));
+      const shade = v => v >= 1 ? "c2" : v >= 0.3 ? "c1" : v > -0.3 ? "c0" : v > -1 ? "n1" : "n2";
+      const fmt = v => (v >= 0 ? "+" : "") + v.toFixed(1);
+      const grid = (vals, ref) => `<div class="cg">${vals.map((v, j) => { const d = ref ? v - ref[j] : 0;
+        const mk = ref && ref[j] < -0.3 && d >= 0.6 ? " fix" : ref && d <= -0.6 ? " dent" : "";
+        return `<span class="cc ${shade(v)}${mk}" title="${esc(CATS[j])}: ${fmt(v)} vs an average team${ref ? ` (now ${fmt(ref[j])})` : ""}">${fmt(v)}</span>`; }).join("")}</div>`;
+      const head = `<div class="cg ch">${CATS.map(c => `<span>${esc(c === "FG%" ? "FG" : c === "FT%" ? "FT" : c === "3P%" ? "3P%" : c)}</span>`).join("")}</div>`;
+      const afterOf = p => CATS.map((c, j) => tz[j] + p.z[j] - pzAfter[j]);
+      const row = ({ p, fit }, rank, kind) => {
         let risk = "";
         if (p.adp != null && p.adp < nextPick) risk = `<span class="tag warn" title="League ADP ${p.adp}">likely gone</span>`;
         else if (p.adp != null && after && p.adp < after) risk = `<span class="tag info">won't come back</span>`;
         const fills = open.filter(s => s !== "UTIL" && (SLOT_MASK[s] & p.mask));
-        return `<tr${k === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${k === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">injury risk</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}
-          <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · bucket ${p.b ?? "–"} · ADP ${p.adp ?? "–"}</span>
-          <span class="sub"><span class="g">${helps.join(" ")}</span>${hurts.length ? ` · <span class="r">${hurts.join(" ")}</span>` : ""}</span></td><td>${fit.toFixed(1)}</td></tr>`;
+        const rm = kind === "mine" ? ` <button class="x" data-uncmp="${p.i}" title="Remove from your shortlist">×</button>` : "";
+        return `<tr${rank === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${rank === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind === "rookie" || kind === "injury" ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">${p.gp} games</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}${rm}
+          <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · ADP ${p.adp ?? "–"}</span></td><td>${fit.toFixed(1)}</td></tr>
+          <tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), now)}</td></tr>`;
       };
-      const groups = new Map(); top10.forEach((x, k) => { const b = x.p.b ?? 99; if (!groups.has(b)) groups.set(b, []); groups.get(b).push(row(x, k)); });
+      // your own shortlist: anyone you add, compared on the same grid (removed automatically once taken)
+      prefs.compare = (prefs.compare || []).filter(i => P[i] && !S.taken.has(i));
+      const fitOf = new Map(a.all.map(x => [x.p.i, x.fit]));
+      const shortRows = prefs.compare.map(i => row({ p: P[i], fit: fitOf.get(i) ?? 0 }, 1, "mine")).join("");
+      const avail = P.filter(p => !S.taken.has(p.i) && p.r).sort((x, y) => x.r - y.r).slice(0, 260);
+      const compareBox = `<div class="cmp"><input id="cmpIn" list="cmpList" placeholder="Add any player to compare…" autocomplete="off"><datalist id="cmpList">${avail.map(p => `<option value="${esc(p.n)}">`).join("")}</datalist></div>`;
+      const groups = new Map(); top10.forEach((x, n) => { const b = x.p.b ?? 99; if (!groups.has(b)) groups.set(b, []); groups.get(b).push(row(x, n)); });
       // colour bands: each bucket a colour (cycling), so the groups read at a glance beside ESPN's list
-      const rows = [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], k) => `<tbody class="bg bg${k % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr>${rs.join("")}</tbody>`).join("") +
-        (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
+      const rows = (shortRows ? `<tbody class="bg bgm"><tr class="bkhead"><td colspan="3">Your shortlist</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${shortRows}</tbody>` : "") +
+        [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], n) => `<tbody class="bg bg${n % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${rs.join("")}</tbody>`).join("") +
+        (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
       // model users picking before me: who they will most likely take
       const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
       const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b> <span class="sub">(if they follow it: they can still pick for themselves)</span>${before.map(x =>
@@ -289,8 +321,10 @@ window.DraftCore = (() => {
         ${planLine(S, a, nextPick)}${modelsLine}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
-        <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
-        <p class="note">Your options by bucket, best Fit first in each. Fit = board value, leaning toward categories you're behind in; the suggested pick is the top Fit. "Likely gone" = league ADP is before your pick.</p>`;
+        <div class="teamnow"><b>Your team now</b> <span class="note">vs an average team after ${k} pick${k === 1 ? "" : "s"}: green ahead, red behind</span>${head}${grid(now, null)}</div>
+        ${compareBox}
+        <table class="opts"><thead><tr><th>Rk</th><th>Player · each grid = your team after taking him</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
+        <p class="note">Options by bucket, best Fit first; add anyone to your shortlist with the box above. Under each player: your team in every category if you take him (outlined green = fixes a weak category, outlined red = sinks one). Fit = board value leaning to your weak categories; suggested = top Fit. "Likely gone" = league ADP is before your pick.</p>`;
     }
 
     function team() {
@@ -392,6 +426,9 @@ window.DraftCore = (() => {
         opts.save(); render(true); });
       const si = body.querySelector("#slotIn"); if (si) si.onchange = () => { const v = +si.value; if (v >= 1 && v <= S.T) { prefs.slot = v; opts.save(); render(true); } };
       body.querySelectorAll("a[data-view]").forEach(a => a.onclick = e => { e.preventDefault(); prefs.view = a.dataset.view; prefs.tab = "team"; opts.save(); render(true); });
+      const ci = body.querySelector("#cmpIn"); if (ci) ci.onchange = () => { const p = P.find(x => x.n === ci.value.trim()); if (!p) return;
+        prefs.compare = [...new Set([...(prefs.compare || []), p.i])]; opts.save(); render(true); };
+      body.querySelectorAll("button[data-uncmp]").forEach(b => b.onclick = () => { prefs.compare = (prefs.compare || []).filter(i => i !== +b.dataset.uncmp); opts.save(); render(true); });
       body.querySelectorAll("input[data-model]").forEach(c => c.onchange = () => {
         prefs.models = [...body.querySelectorAll("input[data-model]:checked")].map(x => x.dataset.model); opts.save(); render(true); });
       if (extra[prefs.tab] && extra[prefs.tab].bind) extra[prefs.tab].bind(body, S);
