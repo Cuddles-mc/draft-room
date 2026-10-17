@@ -1,8 +1,13 @@
 // Draft Helper core: shared by the Chrome extension (ESPN draft room panel) and the hosted live page.
 // Input is a "feed" (the draft so far); output is the panel: best pick, team balance, live buckets, league table.
 // Feed: { v:1, T, R, league, teams:[[id,name]], order:[teamId...]|null, picks:[[overall, teamId, playerIndex|-1, name]], at, built }
+// playerIndex is a position in DH_DATA.players, and the relay sends picks that way. So data.js keeps every player at
+// the position he had in earlier builds (new players are appended), and nothing here may assume the list is in rank
+// order: RANKED is the rank order. That keeps an old live page and a new extension (or the reverse) naming the same
+// player for every pick; only the values differ, and the panel says when the boards differ.
 window.DraftCore = (() => {
   const D = DH_DATA, CATS = D.cats, NC = CATS.length, P = D.players;
+  const RANKED = P.map((_, i) => i).sort((a, b) => P[a].r - P[b].r);
   const SLOT_MASK = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16, G: 3, F: 12, UTIL: 31 };
   const POS_BIT = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16 };
   const NEED_WEIGHT = 0.35;
@@ -35,12 +40,22 @@ window.DraftCore = (() => {
     for (const p of picks) if (p.pi >= 0) rosters.get(p.team).push(p.pi);
     const made = picks.length ? Math.max(picks.length, picks[picks.length - 1].overall) : 0;
     const myPicks = slot ? Array.from({ length: R }, (_, r) => r * T + (r % 2 === 0 ? slot : T + 1 - slot)) : [];
+    // teams watched as model users (drafting off a model like this one): what the panel was told, else the league's
+    // known model seats (D.modelSlots, by draft slot) once the pick order is known
+    const slotOf = id => { if (feed.order) { const k = feed.order.map(String).indexOf(id); if (k >= 0) return k + 1; }
+      const r1 = picks.find(p => p.round === 1 && p.team === id); return r1 ? r1.rp : null; };
+    const models = Array.isArray(prefs.models) ? prefs.models.filter(id => teams.some(t => t.id === id))
+      : teams.filter(t => t.id !== my && (D.modelSlots || []).includes(slotOf(t.id))).map(t => t.id);
     return { T, R, teams, picks, taken, rosters, my, slot, made, myPicks, next: myPicks.filter(n => n > made),
-             unknown: picks.filter(p => p.pi < 0).map(p => p.name) };
+             unknown: picks.filter(p => p.pi < 0).map(p => p.name), models, slotOf,
+             staleBoard: feed.built && feed.built !== D.built ? feed.built : null };
   }
+  // a team's next pick number, from its draft slot (snake)
+  const nextPickOf = (S, slot) => { if (!slot) return null;
+    for (let r = 0; r < S.R; r++) { const n = r * S.T + (r % 2 === 0 ? slot : S.T + 1 - slot); if (n > S.made) return n; } return null; };
 
   const parZ = (S, k) => { const z = new Float64Array(NC), n = Math.min(P.length, S.T * k);
-    for (let i = 0; i < n; i++) for (let c = 0; c < NC; c++) z[c] += P[i].z[c];
+    for (let j = 0; j < n; j++) { const i = RANKED[j]; for (let c = 0; c < NC; c++) z[c] += P[i].z[c]; }
     for (let c = 0; c < NC; c++) z[c] /= S.T; return z; };
   const teamZ = roster => { const z = new Float64Array(NC); for (const i of roster) for (let c = 0; c < NC; c++) z[c] += P[i].z[c]; return z; };
   function match(masks) {     // starters filled by a roster (bipartite matching over the starting slots)
@@ -77,6 +92,14 @@ window.DraftCore = (() => {
     return `<div class="lineup">${L.slots.map(s => chip(s.slot, s.pi)).join("")}${bench.join("")}</div>`;
   }
 
+  // what a model user most likely takes at his next pick: the same Fit as "Best pick" for his roster, leaving out
+  // anyone the league's ADP has gone before that pick
+  function likelyFor(S, teamId) {
+    const n = nextPickOf(S, S.slotOf(teamId)); if (!n) return null;
+    const list = advice(S, teamId).all.filter(({ p }) => n <= S.made + 1 || p.adp == null || p.adp >= n - 2).slice(0, 3);
+    return { n, list: list.map(x => x.p) };
+  }
+
   function advice(S, teamId) {
     const roster = S.rosters.get(teamId) || [], k = roster.length;
     const tz = teamZ(roster), pz = parZ(S, Math.max(1, k));
@@ -89,7 +112,7 @@ window.DraftCore = (() => {
       out.push({ p, fit });
     }
     out.sort((a, b) => b.fit - a.fit);
-    return { roster, list: out.slice(0, 12) };
+    return { roster, list: out.slice(0, 12), all: out };
   }
   const liveBuckets = S => D.buckets.map(b => ({ n: b.n, left: P.filter(p => p.b === b.n && !p.hl && !S.taken.has(p.i)).map(p => p.i) })).filter(b => b.left.length);
 
@@ -198,8 +221,13 @@ window.DraftCore = (() => {
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · bucket ${p.b ?? "–"} · ADP ${p.adp ?? "–"}</span>
           <span class="sub"><span class="g">${helps.join(" ")}</span>${hurts.length ? ` · <span class="r">${hurts.join(" ")}</span>` : ""}</span></td><td>${fit.toFixed(1)}</td></tr>`;
       }).join("");
+      // model users picking before me: who they will most likely take
+      const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
+      const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b>${before.map(x =>
+        `<br>${esc(teamName(x.id))} (#${x.l.n}): likely ${x.l.list.map(p => esc(p.n)).join(" · ")}`).join("")}</div>` : "";
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
+        ${modelsLine}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
         <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead><tbody>${rows}</tbody></table>
@@ -245,15 +273,27 @@ window.DraftCore = (() => {
       return html;
     }
 
+    // teams drafting off a model like this one: their next pick and the three players a model most likely takes there
+    function modelsBlock() {
+      if (!S.teams.length) return "";
+      const rows = S.models.map(id => { const l = likelyFor(S, id);
+        return `<tr><td class="n">${esc(teamName(id))}<span class="sub">slot ${S.slotOf(id) ?? "?"}${l ? ` · next pick #${l.n}` : ""}</span></td><td>${!l ? `<span class="note">${S.slotOf(id) ? "no picks left" : "slot not known yet"}</span>` : l.list.map(p => esc(p.n)).join("<br>")}</td></tr>`; }).join("");
+      const ticks = S.teams.filter(t => t.id !== S.my).map(t => `<label style="white-space:nowrap"><input type="checkbox" data-model="${esc(t.id)}"${S.models.includes(t.id) ? " checked" : ""}> ${esc(t.name)}${S.slotOf(t.id) ? ` (${S.slotOf(t.id)})` : ""}</label>`).join(" ");
+      return `<p class="big">Model users</p>
+        ${rows ? `<table><thead><tr><th>Team</th><th>Most likely next</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="note">None watched yet.</p>`}
+        <p class="note">Teams drafting off a model like this one pick predictably: these are their top three by the same Fit as Best pick, for their roster, leaving out players ADP has gone before their pick. Tick the teams to watch${(D.modelSlots || []).length ? ` (default: slots ${D.modelSlots.join(" and ")})` : ""}:</p>
+        <div class="row">${ticks}</div>`;
+    }
+
     function league() {
       const ids = S.teams.map(t => t.id).filter(id => (S.rosters.get(id) || []).length);
-      if (!ids.length) return `<p class="note">No picks yet.</p>`;
+      if (!ids.length) return modelsBlock() + `<p class="note">No picks yet.</p>`;
       const Z = new Map(ids.map(id => [id, teamZ(S.rosters.get(id))])), n = ids.length;
       const rank = (id, j) => 1 + ids.filter(o => Z.get(o)[j] > Z.get(id)[j]).length;
       const tot = id => Z.get(id).reduce((a, b) => a + b, 0);
       const cell = r => { const t = (r - 1) / Math.max(1, n - 1); return `<td style="background:${t < 0.34 ? "#c6efce" : t > 0.66 ? "#f8cbad" : "#fff"}">${r}</td>`; };
       const rows = ids.slice().sort((a, b) => tot(b) - tot(a)).map((id, k) => `<tr class="${id === S.my ? "me" : ""}"><td class="l"><a href="#" data-view="${esc(id)}">${esc(teamName(id))}</a></td>${CATS.map((c, j) => cell(rank(id, j))).join("")}<td>${k + 1}</td></tr>`).join("");
-      return `<p class="note">Rank in each category from drafted players (1 = best; TO counts fewer as better). Tap a team for its page.</p>
+      return modelsBlock() + `<p class="big" style="margin-top:12px">Category ranks</p><p class="note">Rank in each category from drafted players (1 = best; TO counts fewer as better). Tap a team for its page.</p>
         <div style="overflow:auto"><table class="grid"><thead><tr><th class="l">Team</th>${CATS.map(c => `<th>${c}</th>`).join("")}<th>All</th></tr></thead><tbody>${rows}</tbody></table></div>
         <p class="big" style="margin-top:12px">Lineups</p>
         <p class="note">Who fills each starting slot (best players placed first). Red = still open. BE = bench.</p>
@@ -280,6 +320,7 @@ window.DraftCore = (() => {
       const body = $("dhbody"), y = body.scrollTop;
       body.innerHTML = (views[prefs.tab] ? views[prefs.tab]() : extra[prefs.tab].render(S))
         + (S.unknown.length ? `<p class="note">Not on our board: ${S.unknown.slice(-6).map(esc).join(", ")}</p>` : "")
+        + (S.staleBoard ? `<p class="warnbox">The draft host's board was built ${esc(S.staleBoard)}; this one ${esc(D.built)}. Players match, values may differ: refresh this page${opts.mode === "fixed" ? " or update the extension" : ""} to get the latest board.</p>` : "")
         + `<p class="note" style="margin-top:10px">Board built ${esc(D.built)} · ${D.teams}-team H2H ${NC}-cat (${CATS.join(", ")}).</p>`;
       if (prefs.tab !== lastTab && prefs.tab === "buckets") {
         const first = body.querySelector(".bk:not(.done)");
@@ -292,6 +333,8 @@ window.DraftCore = (() => {
         opts.save(); render(true); });
       const si = body.querySelector("#slotIn"); if (si) si.onchange = () => { const v = +si.value; if (v >= 1 && v <= S.T) { prefs.slot = v; opts.save(); render(true); } };
       body.querySelectorAll("a[data-view]").forEach(a => a.onclick = e => { e.preventDefault(); prefs.view = a.dataset.view; prefs.tab = "team"; opts.save(); render(true); });
+      body.querySelectorAll("input[data-model]").forEach(c => c.onchange = () => {
+        prefs.models = [...body.querySelectorAll("input[data-model]:checked")].map(x => x.dataset.model); opts.save(); render(true); });
       if (extra[prefs.tab] && extra[prefs.tab].bind) extra[prefs.tab].bind(body, S);
     }
     return { render };
