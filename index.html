@@ -63,6 +63,8 @@ td.pl b { font-weight: 600; }
 td.pl .sub { display: block; font-size: 12px; color: var(--muted); }
 .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 4px; margin-left: 4px; border: 1px solid var(--line); color: var(--muted); }
 .tag.warn { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 45%, var(--line)); }
+.tag.hurt { color: var(--neg); background: color-mix(in srgb, var(--neg) 8%, var(--panel)); border-color: color-mix(in srgb, var(--neg) 45%, var(--line)); }
+.tag.gold { color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .tag.move { color: var(--mine); border-color: color-mix(in srgb, var(--mine) 45%, var(--line)); }
 .chip { display: inline-block; min-width: 36px; padding: 2px 3px; border-radius: 4px; font-size: 13px; }
 .chip.punt { opacity: .35; }
@@ -132,7 +134,20 @@ table.even td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-al
 table.even td.n { font-weight: 600; }
 table.even td.w { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 table.even button { padding: 2px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mine) 50%, var(--line)); background: var(--panel); color: var(--mine); font-size: 12px; font-weight: 600; }
-.planbox { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.planbox { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+.planbox .pb { display: inline-block; padding: 1px 6px; margin: 1px 0; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); }
+.planbox .pb1 { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); font-weight: 600; }
+.planbox s { color: var(--muted); font-weight: 400; }
+.pbr { margin-top: 6px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; }
+.pbr.pbhl { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.prow { margin-top: 3px; line-height: 1.7; overflow-wrap: anywhere; }
+.ch { padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.ch.chs { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.chh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.chh .n { font-weight: 600; flex: 1 1 140px; min-width: 0; }
+.chh .w { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.chh button { padding: 2px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mine) 50%, var(--line)); background: var(--panel); color: var(--mine); font-size: 12px; font-weight: 600; }
+.dchip { display: inline-block; padding: 0 5px; margin: 1px 3px 1px 0; border-radius: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .planbox b { color: var(--ink); }
 .stale { opacity: .55; }
 .tiles { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 12px; }
@@ -1322,6 +1337,7 @@ async function runCoach() {
      boom-or-bust one with the same average. The weekly win rate and the chance of a 3+ week losing run are
      reported beside it. Seasons are seeded by draft and season number only, so every option meets the same luck. */
   const PO_SMOOTH = 0.75;   // wins; about the half-game tie and tiebreak fuzz around the line
+  const mePath = s.slot - 1, baseLen = start.rosters[mePath].length;
   // drafts k0..k1-1 added to a running total (acc), so a later batch sharpens an earlier answer
   const evalRuns = async (punts, forced, k0 = 0, k1 = COACH_SIMS, acc = null) => {
     const a = acc || { w: 0, po: 0, streak: 0, mg: 0, cp: new Float64Array(nC), per: [] };
@@ -1335,6 +1351,8 @@ async function runCoach() {
         m += res.margin; ps += Phi(res.margin / PO_SMOOTH); if (res.rank <= PLAYOFF_TEAMS) a.po++; if (res.longestLoss >= 3) a.streak++;
       }
       a.per.push(ps / COACH_SEASONS); a.mg += m / COACH_SEASONS;
+      // your picks after this one in this simulated draft: the "path ahead" tally on the card
+      if (forced != null) (a.paths = a.paths || []).push(R[mePath].slice(baseLen + 1));
       if (k % 4 === 3) { await tick(); if (token !== coachToken) throw "stale"; }
     }
     const K = a.per.length, S = K * COACH_SEASONS, pos = a.per.reduce((u, v) => u + v, 0);
@@ -1386,6 +1404,17 @@ async function runCoach() {
     if (availP) for (let i = 0; i < C.N; i++) if (availP[i] < 0.3) tmpAvail[i] = 0;
     for (let n = 0; n < COACH_CANDIDATES - 3; n++) { const i = coachPick(roster, tmpAvail, bestPunts); if (i < 0) break; cand.push(i); tmpAvail[i] = 0; }
     for (let n = 0; n < 3; n++) { const i = coachPick(roster, tmpAvail, null); if (i < 0) break; cand.push(i); tmpAvail[i] = 0; }
+    /* reaches: the best rookie and the best injury gamble you could take here (likely there, lineup still
+       fillable), always tested so their cost is on the card beside the even picks. Rookies carry a wide range
+       (rr) and injury risks a short season; someone who wants the upside can see exactly what it costs. */
+    const wFit = fitWeights(roster, bestPunts), fitOf = i => { let v = 0; for (let j = 0; j < nC; j++) v += wFit[j] * C.Z[i * nC + j]; return v; };
+    const isRookie = i => /rookie/.test(C.all[i].f || "") || !!C.all[i].extra, isHurt = i => C.gEff[i] < 0.72;
+    const reaches = [];
+    for (const [kind, test] of [["rookie", isRookie], ["injury", isHurt]]) {
+      let b = -Infinity, p = -1;
+      for (let i = 0; i < C.N; i++) { if (!start.avail[i] || (availP && availP[i] < 0.3) || !test(i)) continue; const v = fitOf(i); if (v > b && lineupFeasible(roster, i)) { b = v; p = i; } }
+      if (p >= 0) { reaches.push({ i: p, kind }); if (!cand.includes(p)) cand.push(p); }
+    }
     // the plan's pick is always tested, so plan and coach are compared on the same drafts
     const pl = planFor(); if (pl && pl.pick >= 0 && !cand.includes(pl.pick)) cand.push(pl.pick);
     /* how likely each player is to last to your pick AFTER this one: the tiebreak among even options (take the one
@@ -1408,7 +1437,7 @@ async function runCoach() {
       for (const c of picks.slice(1)) { const q = gap(picks[0], c); c.tie = q.diff <= 2 * q.se || q.diff < 0.01; } };
     const publish = done => { rank();
       coachResult = { at: state.picks.length, builds: ranked, bestName, best, picks, cats: C.cats.slice(), room: roomSummary(read),
-                      sims: picks[0].K, done, lasts, nAfter, plan: pl, simBuild };
+                      sims: picks[0].K, done, lasts, nAfter, plan: pl, simBuild, reaches, nForced: nNext };
       renderCoach(); renderBoard(); renderMyTeam(); };
     publish(false);
     // keep sharpening the candidates until the next pick lands (a new pick bumps coachToken and evalRuns throws)
@@ -1429,6 +1458,35 @@ function scheduleCoach() {
   // refresh after every pick (debounced so a burst of picks runs it once)
   if (myPicksFrom(state.picks.length + 1, 1).length) coachTimer = setTimeout(runCoach, 400);
   else renderCoach();
+}
+
+/* the plan as a path: buckets at each planned pick (players within PLAN_TIER playoff points of the bucket's best are
+   even), your branch highlighted. Before your first pick it shows every branch by first pick; after it, only yours. */
+const PLAN_TIER = 2;
+function planBuckets(list, avail) {
+  const out = []; let cur = null;
+  for (const [nm, e] of list) { if (!cur || cur.top - e > PLAN_TIER) { cur = { top: e, names: [] }; out.push(cur); } cur.names.push(nm); }
+  const idx = nm => C.all.findIndex(p => p.n === nm);
+  return out.map((b, k) => `<span class="pb${k ? "" : " pb1"}">${b.names.map(nm => { const i = idx(nm), gone = i >= 0 && avail && !avail[i];
+    return gone ? `<s>${esc(nm)}</s>` : esc(nm); }).join(" · ")}</span>`).join(`<span class="sub"> then </span>`);
+}
+function planTree(pl) {
+  if (!pl) return "";
+  const P = PLAN[state.settings.slot];
+  if (pl.off) return `<div class="planbox">Plan: your first pick wasn't one the plan covered, so from here it's the coach's live read.</div>`;
+  const live = liveRosters(), mine = live.rosters[state.settings.slot - 1], av = live.avail;
+  const head = `<div class="planbox"><b>The plan: your first three picks</b> <span class="sub">(500 simulated drafts per option before the draft. Each box is a bucket of even picks, best bucket first; struck = gone)</span>`;
+  const row = (first, g, hl) => `<div class="pbr${hl ? " pbhl" : ""}"><div><b>#${P.picks[0]} ${esc(first)}</b>${hl ? ` <span class="tag sugtag">suggested route</span>` : ""}</div>
+    <div class="prow"><b>#${P.picks[1]}</b> ${planBuckets(g.p2, av)}</div><div class="prow"><b>#${P.picks[2]}</b> ${planBuckets(g.p3, av)}</div></div>`;
+  const tbl = rows => rows;
+  if (pl.step === 0) {
+    const firstAvail = P.prio.map(x => x[0]).find(nm => { const i = C.all.findIndex(p => p.n === nm); return i >= 0 && av[i]; });
+    const rows = P.prio.filter(([nm]) => P.groups[nm]).map(([nm]) => row(nm, P.groups[nm], nm === firstAvail)).join("");
+    return head + `<div style="margin:4px 0">#${pl.n}: ${planBuckets(P.prio, av)}</div>` + (pl.avoid.length ? `<div class="sub">Not at #${pl.n}: ${pl.avoid.map(esc).join(", ")}</div>` : "") +
+      `<div class="sub" style="margin-top:6px">Then, by who you get first:</div>` + tbl(rows) + `</div>`;
+  }
+  const first = C.all[mine[0]].n, g = P.groups[first];
+  return head + tbl(row(first, g, true)) + (pl.avoid.length ? `<div class="sub">Not at #${pl.n}: ${pl.avoid.map(esc).join(", ")}</div>` : "") + `</div>`;
 }
 
 /* the one pick to make, and why. Order of rules:
@@ -1464,29 +1522,41 @@ function renderCoach(msg) {
   const buildLine = r.builds.slice(0, 3).map(([n, v]) => `${esc(n)} ${(100 * v.po).toFixed(0)}% playoffs`).join(" · ");
   const catChips = r.cats.map((c, j) => { const q = r.picks[0].catP[j]; return `<span style="${chipStyle((q - 0.5) * 5)}" title="Chance of winning ${esc(c)} in a typical week">${esc(c)} ${Math.round(100 * q)}%</span>`; }).join("");
   const top = r.picks[0], openSlots = openSlotMasks(), sug = coachSuggest(r), sp = C.all[sug.i];
+  const sc = r.picks.find(c => c.i === sug.i) || top;
   const fillsOf = p => openSlots.filter(sl => SLOT_MASK[sl] & posMask(p));
-  // the even group: #1 and everything within its noise, each with what it adds (weekly win chance by category,
-  // against the group's average) and whether it will come back to you
+  /* "Your choice": the even group (#1 and everything within its noise) plus the reaches (best rookie, best injury
+     gamble). Each row says what taking him instead of the suggested pick does to your season, category by
+     category (weekly win chance, percentage points), what it costs in playoff chance, and whether he lasts. */
   const group = r.picks.filter((c, n) => n === 0 || c.tie);
-  const mean = r.cats.map((_, j) => group.reduce((a, c) => a + c.catP[j], 0) / group.length);
-  const helps = c => r.cats.map((cat, j) => [cat, 100 * (c.catP[j] - mean[j])]).filter(x => x[1] >= 0.4).sort((a, b) => b[1] - a[1]).slice(0, 3)
-    .map(([cat, d]) => `${esc(cat)} +${d < 1 ? d.toFixed(1) : d.toFixed(0)}`).join(", ") || "about the group average";
-  const evenRows = group.length >= 2 ? group.map(c => { const p = C.all[c.i], fl = fillsOf(p);
-    return `<tr><td class="n">${esc(p.n)}${c.i === sug.i ? ` <span class="tag sugtag">suggested</span>` : ""}<div class="sub">${esc(p.pos5 || p.p || "")}${fl.length ? ` · fills ${esc(fl.join("/"))}` : ""}</div></td>
-      <td>${helps(c)}</td><td class="w">${Math.round(100 * c.po)}%</td><td class="w">${r.lasts ? `${Math.round(100 * r.lasts[c.i])}%` : "–"}</td>
-      <td><button data-coach-k="${esc(p.key)}">Mine</button></td></tr>`; }).join("") : "";
-  const evenBox = evenRows ? `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Even picks: the simulations can't separate these (${r.sims} drafts${r.done ? "" : ", still sharpening"}), so choose on need</div>
-    <table class="even"><thead><tr><td class="sub">Player</td><td class="sub">Helps most (weekly win %, vs these)</td><td class="sub">Playoffs</td><td class="sub">${r.nAfter ? `Lasts to #${r.nAfter}` : "Lasts"}</td><td></td></tr></thead><tbody>${evenRows}</tbody></table>` : "";
+  const reachRows = (r.reaches || []).map(x => ({ ...x, c: r.picks.find(c => c.i === x.i) })).filter(x => x.c && !group.includes(x.c));
+  const deltaChips = c => {
+    if (c === sc) return `<span class="sub">the baseline for this table</span>`;
+    const d = r.cats.map((cat, j) => [cat, 100 * (c.catP[j] - sc.catP[j])]).filter(x => Math.abs(x[1]) >= 0.5).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 5);
+    return d.length ? d.map(([cat, v]) => `<span class="dchip" style="${chipStyle(v / 5)}">${esc(cat)} ${v > 0 ? "+" : ""}${Math.abs(v) < 1 ? v.toFixed(1) : v.toFixed(0)}</span>`).join("") : `<span class="sub">about the same everywhere</span>`;
+  };
+  const choiceRow = (c, kind) => { const p = C.all[c.i], fl = fillsOf(p), d = 100 * (c.obj - sc.obj);
+    const tag = c.i === sug.i ? ` <span class="tag sugtag">suggested</span>` : kind === "rookie" ? ` <span class="tag gold">rookie reach</span>` : kind === "injury" ? ` <span class="tag hurt">injury reach</span>` : "";
+    const upside = kind === "rookie" ? ` · range ${esc(p.rr ? p.rr.join("–") : "wide")}` : kind === "injury" ? ` · about ${Math.round(82 * C.gEff[c.i])} games` : "";
+    return `<div class="ch${c.i === sug.i ? " chs" : ""}"><div class="chh"><span class="n">${esc(p.n)}${tag}</span>
+      <span class="w" title="Playoff chance if you take him (change vs the suggested pick)">${Math.round(100 * c.po)}%${c === sc ? "" : ` (${d >= 0 ? "+" : ""}${d.toFixed(0)})`}</span>
+      <span class="w" title="${r.nAfter ? `Chance he is still there at your pick #${r.nAfter}` : ""}">${r.lasts ? `lasts ${Math.round(100 * r.lasts[c.i])}%` : ""}</span>
+      <button data-coach-k="${esc(p.key)}">Mine</button></div>
+      <div class="sub">${esc(p.pos5 || p.p || "")}${fl.length ? ` · fills ${esc(fl.join("/"))}` : ""}${upside}</div><div>${deltaChips(c)}</div></div>`; };
+  const choiceBody = [...group.map(c => choiceRow(c, "")), ...(reachRows.length ? [`<div class="sub" style="margin-top:8px">Reaches: upside you can buy, at the cost shown</div>`] : []), ...reachRows.map(x => choiceRow(x.c, x.kind))].join("");
+  const evenBox = `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Your choice${group.length >= 2 ? `: these ${group.length} are even over ${r.sims} drafts${r.done ? "" : " (still sharpening)"}` : ""}</div>
+    <div class="sub">Playoff chance if you take him; "lasts" = still there at ${r.nAfter ? `your pick #${r.nAfter}` : "your next pick"}; chips = what he changes in your season vs ${esc(sp.n)} (weekly win chance by category, % points).</div>${choiceBody}`;
   const suggestBox = `<div class="suggest">Suggested: <b>${esc(sp.n)}</b><button data-coach-k="${esc(sp.key)}">Mine</button><div class="sub">${esc(sug.why)}.</div></div>`;
-  // the pre-draft plan for this pick, beside the coach's own ranking
-  const pl = r.plan; let planBox = "";
-  if (pl && pl.off) planBox = `<div class="planbox">Plan: your first pick was not one the plan covered, so from here it's the coach's live read.</div>`;
-  else if (pl) {
-    const coachRank = i => { const k = r.picks.findIndex(c => c.i === i); return k < 0 ? "" : k === 0 ? "coach #1" : r.picks[k].tie ? `coach #${k + 1}, level` : `coach #${k + 1}`; };
-    const items = pl.list.filter(x => pl.avail[x.i]).slice(0, 5).map((x, k) => `${k ? "" : "<b>"}${esc(x.nm)}${k ? "" : "</b>"}${x.e ? ` (${x.e > 0 ? "+" : ""}${x.e})` : ""}${coachRank(x.i) ? ` <span class="sub">${coachRank(x.i)}</span>` : ""}`).join(" · ");
-    planBox = `<div class="planbox"><b>Plan for pick ${pl.n}</b> (500 drafts per option before the draft; edge in playoff pts): ${items || "none of its players are left"}${pl.avoid.length ? `<br>Not at this pick: ${pl.avoid.map(esc).join(", ")}` : ""}</div>`;
+  // the path ahead if you take the suggested pick: who the coach most often takes at each of your next picks
+  let pathBox = "";
+  if (sc.acc && sc.acc.paths && sc.acc.paths.length) {
+    const nums = myPicksFrom((r.nForced || state.picks.length + 1) + 1, 4), K = sc.acc.paths.length;
+    const rows = nums.map((n, j) => { const m = new Map(); sc.acc.paths.forEach(pth => { if (pth[j] != null) m.set(pth[j], (m.get(pth[j]) || 0) + 1); });
+      const top3 = [...m].sort((x, y) => y[1] - x[1]).slice(0, 3);
+      return top3.length ? `<div class="prow"><b>#${n}</b> ${top3.map(([i, k]) => `${esc(C.all[i].n)} <span class="sub">${Math.round(100 * k / K)}%</span>`).join(" · ")}</div>` : ""; }).join("");
+    if (rows) pathBox = `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Your path after ${esc(sp.n)}</div><div class="sub">Who the coach takes for you at each pick across ${K} simulated drafts. It changes as the room picks, so read it as the likely buckets.</div>${rows}`;
   }
-  const rest = r.picks.filter(c => !group.includes(c) || group.length < 2);
+  const planBox = planTree(r.plan);
+  const rest = r.picks.filter(c => !group.includes(c) && !reachRows.some(x => x.c === c));
   const cands = rest.slice(0, 6).map((c) => { const n = r.picks.indexOf(c);
     const p = C.all[c.i];
     const d = 100 * (c.obj - top.obj);
@@ -1504,8 +1574,8 @@ function renderCoach(msg) {
     <div class="sub">This assumes the rest of the draft plays out like the simulations, so it moves as real picks land. Compare options with each other rather than reading it as a forecast.</div>
     ${r.room ? `<div class="sub" style="margin-top:4px">Other teams simulated as: ${esc(r.room)}</div>` : ""}
     ${applyBtn}
-    ${suggestBox}${planBox}${evenBox}
-    ${cands ? `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">${evenBox ? "Next best" : `Best pick ${teamForPick(state.picks.length + 1) === s.slot ? "now" : "if still there at your pick"}`}</div>
+    ${suggestBox}${evenBox}${pathBox}${planBox}
+    ${cands ? `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Next best</div>
     <ol class="cands">${cands}</ol>` : ""}</div>`;
   const b = $("coachApply");
   if (b) b.onclick = () => changeSettings(st => { st.punts = punts.filter(c => st.cats.includes(c)); });

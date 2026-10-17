@@ -107,18 +107,26 @@ window.DraftCore = (() => {
   function planLine(S, a, nextPick) {
     const PL = D.plan && D.plan[S.slot]; if (!PL || S.T !== 20 || S.R !== 10) return "";
     const step = PL.picks.indexOf(nextPick); if (step < 0) return "";
-    let list, avoid;
-    if (step === 0) { list = PL.prio; avoid = PL.avoid; }
-    else {
-      const g = a.roster.length ? PL.groups[P[a.roster[0]].n] : null;
-      if (!g) return `<p class="note">Plan: your first pick wasn't one the plan covered, so use Fit below from here.</p>`;
-      list = step === 1 ? g.p2 : g.p3; avoid = step === 1 ? g.avoid2 : g.avoid3;
+    const byName = nm => P.find(p => p.n === nm), gone = nm => { const p = byName(nm); return !p || S.taken.has(p.i); };
+    // buckets: players within 2 playoff points of the bucket's best are even; struck = taken
+    const buckets = list => { const out = []; let cur = null;
+      for (const [nm, e] of list) { if (!cur || cur.top - e > 2) { cur = { top: e, names: [] }; out.push(cur); } cur.names.push(nm); }
+      return out.map((bk, k) => `<span class="pb${k ? "" : " pb1"}">${bk.names.map(nm => gone(nm) ? `<s>${esc(nm)}</s>` : esc(nm)).join(" · ")}</span>`).join(" <span class=\"sub\">then</span> "); };
+    const route = (first, g, hl) => `<div class="pbr${hl ? " pbhl" : ""}"><b>#${PL.picks[0]} ${esc(first)}</b>${hl ? " <span class=\"sub\">(suggested route)</span>" : ""}
+      <div>#${PL.picks[1]} ${buckets(g.p2)}</div><div>#${PL.picks[2]} ${buckets(g.p3)}</div></div>`;
+    const firstLeft = list => (list.find(([nm]) => !gone(nm)) || [])[0];
+    const head = `<div class="planbox"><b>The plan: your first three picks</b> <span class="sub">(500 simulated drafts per option before the draft; each box is a bucket of even picks, best first)</span>`;
+    if (step === 0) {
+      const pick = firstLeft(PL.prio);
+      const routes = PL.prio.filter(([nm]) => PL.groups[nm]).map(([nm]) => route(nm, PL.groups[nm], nm === pick)).join("");
+      return head + `<div>Take now: <b>${esc(pick || "none left: use Fit")}</b></div><div>#${PL.picks[0]} ${buckets(PL.prio)}</div>` +
+        (PL.avoid.length ? `<div class="sub">Not at this pick: ${PL.avoid.filter(nm => !gone(nm)).map(esc).join(", ")}</div>` : "") + routes + `</div>`;
     }
-    const byName = nm => P.find(p => p.n === nm);
-    const left = list.map(([nm, e]) => ({ p: byName(nm), e })).filter(x => x.p && !S.taken.has(x.p.i));
-    const skip = avoid.filter(nm => { const p = byName(nm); return p && !S.taken.has(p.i) && !list.some(x => x[0] === nm); });
-    if (!left.length) return `<p class="note">Plan for pick #${nextPick}: none of its players are left, so use Fit below.</p>`;
-    return `<div class="planbox"><b>Plan for pick #${nextPick}: ${esc(left[0].p.n)}</b>${left.length > 1 ? ` <span class="sub">if gone: ${left.slice(1, 4).map(x => esc(x.p.n)).join(", ")}</span>` : ""}${skip.length ? `<br><span class="sub">Not at this pick: ${skip.map(esc).join(", ")}</span>` : ""}<br><span class="sub">From 500 simulated drafts per option before the draft. Fit below takes over after your third pick.</span></div>`;
+    const first = a.roster.length ? P[a.roster[0]].n : null, g = first ? PL.groups[first] : null;
+    if (!g) return `<p class="note">Plan: your first pick wasn't one the plan covered, so use Fit below from here.</p>`;
+    const list = step === 1 ? g.p2 : g.p3, pick = firstLeft(list), avoid = (step === 1 ? g.avoid2 : g.avoid3).filter(nm => !gone(nm) && !list.some(x => x[0] === nm));
+    return head + `<div>Take now: <b>${esc(pick || "none left: use Fit")}</b></div>` + route(first, g, true) +
+      (avoid.length ? `<div class="sub">Not at this pick: ${avoid.map(esc).join(", ")}</div>` : "") + `<div class="sub">Fit below takes over after your third pick.</div></div>`;
   }
 
   function advice(S, teamId) {
@@ -165,6 +173,11 @@ window.DraftCore = (() => {
     .big { font-size: 13.5px; font-weight: 700; margin: 2px 0 6px; }
     .warnbox { background: #fff4e5; border: 1px solid #f5c48a; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
     .planbox { background: #eef4ff; border: 1px solid #a9c2f2; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+    .planbox .pb { display: inline-block; padding: 0 5px; margin: 1px 0; border: 1px solid #c9d6ee; border-radius: 4px; background: #fff; }
+    .planbox .pb1 { border-color: #6f95e0; font-weight: 600; }
+    .planbox s { color: #889; font-weight: 400; }
+    .planbox .pbr { margin-top: 5px; padding: 4px 6px; border: 1px solid #c9d6ee; border-radius: 5px; line-height: 1.7; }
+    .planbox .pbr.pbhl { border-color: #6f95e0; background: #f6f9ff; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 10.5px; color: #5b6578; font-weight: 600; padding: 3px 4px; border-bottom: 1px solid #e3e8f0; }
     td { padding: 4px; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
