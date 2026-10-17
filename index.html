@@ -123,6 +123,17 @@ ol.cands li .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 ol.cands li .w { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 ol.cands li button { padding: 2px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mine) 50%, var(--line)); background: var(--panel); color: var(--mine); font-size: 12px; font-weight: 600; }
 .tag.coachtag { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.tag.sugtag { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+.suggest { margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); font-size: 13px; }
+.suggest b { font-size: 15px; }
+.suggest button { margin-left: 8px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); font-weight: 600; font-size: 12px; }
+table.even { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12.5px; }
+table.even td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+table.even td.n { font-weight: 600; }
+table.even td.w { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+table.even button { padding: 2px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mine) 50%, var(--line)); background: var(--panel); color: var(--mine); font-size: 12px; font-weight: 600; }
+.planbox { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.planbox b { color: var(--ink); }
 .stale { opacity: .55; }
 .tiles { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 12px; }
 .tiles > div { display: flex; flex-direction: column; }
@@ -719,7 +730,9 @@ function renderBoard() {
     const inj = p.inj ? `<span class="tag warn">${esc(p.inj)}</span>` : "";
     const extra = p.extra ? `<span class="tag" title="2026 rookie or no recent NBA stats: placed by expert rank">rookie / no projection</span>` : "";
     const cr = coachResult && coachResult.at === state.picks.length && C ? coachResult.picks.findIndex(c => C.all[c.i].key === p.key) : -1;
-    const coachTag = cr >= 0 && cr < 3 ? `<span class="tag coachtag" title="Draft coach's lookahead ranking">coach #${cr + 1}</span>` : "";
+    const sugI = cr >= 0 ? coachSuggest(coachResult).i : -1;
+    const coachTag = (sugI >= 0 && C.all[sugI].key === p.key ? `<span class="tag sugtag" title="The coach's suggested pick (see the coach card for why)">suggested</span>` : "") +
+      (cr >= 0 && cr < 3 ? `<span class="tag coachtag" title="Draft coach's lookahead ranking">coach #${cr + 1}${cr && coachResult.picks[cr].tie ? " ≈" : ""}</span>` : "");
     const fills = openSlots.filter(sl => SLOT_MASK[sl] & posMask(p));
     const fillTag = fills.length ? `<span class="tag move" title="Fills an open starting slot on your team">fills ${esc(fills.join("/"))}</span>` : "";
     const sub = [p.pos5 || p.p, p.ct || p.t, p.a ? Math.floor(p.a) : null].filter(Boolean).join(" · ");
@@ -943,10 +956,42 @@ const matchedCount = (masks, slots) => matchSlots(masks, slots).filter(o => o >=
    Fit under that build) and score every finished league as weekly H2H matchups. Then do the same after forcing each top candidate as your next pick. Each simulation is
    scored twice, on the model and on projections pulled halfway toward ADP, and averaged. */
 const COACH_SIMS = 24, COACH_SEASONS = 8, COACH_CANDIDATES = 10, WEEK_GAMES = 3.5;
+/* COACH_SIMS drafts give the first answer in ~15 s on a laptop, but that is too few to separate close options: on
+   17 Oct the live coach put Duren over KAT at pick 16 (35.5 vs 34.8) while the same coach on 400 drafts had KAT
+   clearly ahead (39.0 vs 34.3), as the pre-draft plan did. So after the first answer it keeps adding batches of
+   COACH_SIMS drafts to the candidates (same seeds, so the first answer is a prefix of the sharper one) until
+   COACH_REFINE_TO or the next pick lands, re-ranking and re-marking ties after each batch. */
+const COACH_REFINE_TO = 240;
+/* The pre-draft plan (17 Oct 2026; phaseS on 500 drafts x 6 seasons per option, the other two of slots 12/16/17
+   leaning on a model, every other team by ADP). For each of the three seats: the first-pick priority with each
+   player's edge in playoff points over the anchor, players worse than -3 at that pick, and for each first pick the
+   pick-2 and pick-3 options (edge vs that list's best) and the ones to skip. It only applies to this league's shape
+   (20 teams, 10 rounds) at those pick numbers; the coach shows it beside its own live ranking and always tests the
+   plan's pick, so the two can be compared on the same drafts. */
+const PLAN = {"12":{"picks":[12,29,52],"prio":[["Jalen Johnson",8.2],["Cooper Flagg",4.0],["Tyrese Maxey",3.4],["Karl-Anthony Towns",3.2],["Scottie Barnes",2.4],["Bam Adebayo",0.4],["Alperen Sengun",0],["Donovan Mitchell",-0.5],["Tyrese Haliburton",-2.2],["LaMelo Ball",-4.8]],"avoid":["Tyrese Haliburton","Alperen Sengun","Donovan Mitchell","Bam Adebayo","LaMelo Ball"],"groups":{"Tyrese Maxey":{"p2":[["Jalen Duren",0],["Chet Holmgren",-0.3],["Evan Mobley",-2.5],["Donovan Clingan",-2.7]],"avoid2":["Jarrett Allen","Rudy Gobert","Walker Kessler"],"p3":[["Kon Knueppel",0.0],["Jarrett Allen",-1.5],["Stephon Castle",-2.4],["Lauri Markkanen",-2.9]],"avoid3":["LeBron James","Ivica Zubac"]},"Cooper Flagg":{"p2":[["Austin Reaves",0.0],["James Harden",-1.8],["Evan Mobley",-3.4],["Chet Holmgren",-3.5]],"avoid2":["Kawhi Leonard","Donovan Clingan"],"p3":[["Kel'el Ware",0.0],["Jarrett Allen",-1.9],["Lauri Markkanen",-3.0],["Ivica Zubac",-4.9]],"avoid3":["Ivica Zubac","Onyeka Okongwu","Michael Porter Jr.","Rudy Gobert"]},"Jalen Johnson":{"p2":[["Kawhi Leonard",0.0],["Stephen Curry",-1.9],["Chet Holmgren",-2.1],["James Harden",-4.0]],"avoid2":["James Harden","Austin Reaves","Evan Mobley","Derrick White"],"p3":[["Desmond Bane",0.0],["Kon Knueppel",-0.7],["Jarrett Allen",-2.9],["Matas Buzelis",-5.4]],"avoid3":["Matas Buzelis","Onyeka Okongwu","Brandon Miller","LeBron James"]},"Karl-Anthony Towns":{"p2":[["Trae Young",0.0],["Kawhi Leonard",-0.6],["Derrick White",-1.9],["Austin Reaves",-4.4]],"avoid2":["Austin Reaves","Evan Mobley","James Harden","Stephen Curry"],"p3":[["Kon Knueppel",0.0],["Jarrett Allen",-2.1],["Stephon Castle",-2.9],["LeBron James",-3.0]],"avoid3":["Matas Buzelis","Brandon Miller","Dyson Daniels"]}}},"16":{"picks":[16,25,56],"prio":[["Scottie Barnes",7.8],["Karl-Anthony Towns",7.4],["Tyrese Maxey",5.8],["Tyrese Haliburton",3.9],["Jamal Murray",3.1],["Bam Adebayo",2.0],["Alperen Sengun",1.1],["Jalen Duren",0],["LaMelo Ball",-1.3],["Anthony Davis",-4.2]],"avoid":["Jalen Duren","Anthony Davis","LaMelo Ball"],"groups":{"Jamal Murray":{"p2":[["Jalen Duren",0],["Evan Mobley",-1.7],["Chet Holmgren",-2.4],["Anthony Davis",-2.6]],"avoid2":["Donovan Clingan","Walker Kessler"],"p3":[["VJ Edgecombe",0.0],["Matas Buzelis",-2.0],["Kyrie Irving",-4.2],["De'Aaron Fox",-4.4]],"avoid3":["Kyrie Irving","De'Aaron Fox","Payton Pritchard","Nickeil Alexander-Walker","Brandon Miller"]},"Tyrese Haliburton":{"p2":[["Domantas Sabonis",0.0],["Jalen Duren",-3.5],["Evan Mobley",-5.2],["Chet Holmgren",-8.1]],"avoid2":["Evan Mobley","Chet Holmgren","Donovan Clingan","Anthony Davis","Paolo Banchero"],"p3":[["Matas Buzelis",0.0],["VJ Edgecombe",-0.5],["Brandon Miller",-1.0],["Nickeil Alexander-Walker",-1.5]],"avoid3":["Kyrie Irving","Tyler Herro","Michael Porter Jr."]},"Scottie Barnes":{"p2":[["James Harden",0.0],["Domantas Sabonis",-0.1],["Jamal Murray",-0.4],["Jalen Duren",-2.0]],"avoid2":["Josh Giddey","Stephen Curry"],"p3":[["Jarrett Allen",0.0],["Payton Pritchard",-0.1],["Nickeil Alexander-Walker",-1.3],["Brandon Miller",-1.9]],"avoid3":["Tyler Herro","Ty Jerome"]},"Karl-Anthony Towns":{"p2":[["Jamal Murray",0],["James Harden",-0.8],["Austin Reaves",-4.0],["Trae Young",-4.1]],"avoid2":["Trae Young","Jalen Brunson","Stephen Curry","Josh Giddey"],"p3":[["Kel'el Ware",0.0],["VJ Edgecombe",-8.4],["Jarrett Allen",-8.4],["Dyson Daniels",-8.6]],"avoid3":["VJ Edgecombe","Jarrett Allen","Dyson Daniels","Matas Buzelis","Onyeka Okongwu","LeBron James"]},"Tyrese Maxey":{"p2":[["Chet Holmgren",0.0],["Evan Mobley",-0.2],["Jalen Duren",-0.9],["Donovan Clingan",-6.1]],"avoid2":["Donovan Clingan","Anthony Davis","Walker Kessler","Domantas Sabonis"],"p3":[["Stephon Castle",0.0],["Ivica Zubac",-0.2],["Jarrett Allen",-1.2],["De'Aaron Fox",-1.8]],"avoid3":["VJ Edgecombe"]}}},"17":{"picks":[17,24,57],"prio":[["Scottie Barnes",5.8],["Karl-Anthony Towns",5.7],["Tyrese Maxey",1.1],["Tyrese Haliburton",0.3],["Jamal Murray",0],["Bam Adebayo",-0.2],["Alperen Sengun",-1.7],["Jalen Duren",-2.5],["LaMelo Ball",-3.9],["Anthony Davis",-7.0],["Domantas Sabonis",-7.1]],"avoid":["Anthony Davis","Domantas Sabonis","LaMelo Ball"],"groups":{"Jamal Murray":{"p2":[["Jalen Duren",0],["Anthony Davis",-1.0],["Alperen Sengun",-1.4],["Chet Holmgren",-2.2]],"avoid2":["Evan Mobley","Domantas Sabonis","Donovan Clingan"],"p3":[["Matas Buzelis",0.0],["VJ Edgecombe",-0.0],["Nickeil Alexander-Walker",-0.4],["De'Aaron Fox",-1.0]],"avoid3":[]},"Tyrese Haliburton":{"p2":[["Domantas Sabonis",0.0],["Alperen Sengun",-2.2],["Evan Mobley",-4.0],["Jalen Duren",-4.4]],"avoid2":["Evan Mobley","Jalen Duren","Chet Holmgren","Donovan Clingan","Anthony Davis"],"p3":[["Brandon Miller",0.0],["Matas Buzelis",-0.1],["VJ Edgecombe",-2.7],["Kyrie Irving",-3.4]],"avoid3":["De'Aaron Fox","Tyler Herro"]},"Scottie Barnes":{"p2":[["Jamal Murray",0.0],["Jalen Duren",-3.9],["James Harden",-4.7],["Josh Giddey",-5.0]],"avoid2":["James Harden","Josh Giddey","Austin Reaves","Jalen Brunson","Stephen Curry"],"p3":[["Onyeka Okongwu",0.0],["Matas Buzelis",-2.8],["Jarrett Allen",-3.7],["Ivica Zubac",-6.6]],"avoid3":["Ivica Zubac","Rudy Gobert","Payton Pritchard","Immanuel Quickley"]},"Karl-Anthony Towns":{"p2":[["Josh Giddey",0.0],["James Harden",-2.6],["Jalen Brunson",-3.7],["Jamal Murray",-4.2]],"avoid2":["Jamal Murray","Austin Reaves","Trae Young","Stephen Curry"],"p3":[["VJ Edgecombe",0.0],["Matas Buzelis",-0.8],["Nickeil Alexander-Walker",-2.3],["De'Aaron Fox",-2.4]],"avoid3":["Tyler Herro","Jaren Jackson Jr."]},"Tyrese Maxey":{"p2":[["Josh Giddey",0.0],["Evan Mobley",-5.9],["Domantas Sabonis",-7.4],["Jalen Duren",-8.0]],"avoid2":["Evan Mobley","Domantas Sabonis","Jalen Duren","Chet Holmgren","Walker Kessler","Donovan Clingan"],"p3":[["Jarrett Allen",0.0],["Onyeka Okongwu",-1.2],["Kel'el Ware",-3.1],["Matas Buzelis",-5.4]],"avoid3":["Matas Buzelis","Rudy Gobert","Ivica Zubac","Caleb Wilson"]}}}};
 const STATKEYS = ["PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "DD", "g"];
 const COACH_BUILDS = (DATA.strategy && DATA.strategy.builds) ||
   { "Best player available": null, "Balanced": [], "Punt TO": ["TO"], "Punt FT%": ["FT%"], "Punt FG%": ["FG%"], "Punt BLK": ["BLK"] };
 let C = null, coachToken = 0, coachResult = null, coachTimer = null;
+// the plan entry for your next pick, or null: { n, step, list: [[name, edge]], avoid, pick (first available index) }
+function planFor() {
+  const s = state.settings, P = PLAN[s.slot];
+  if (!P || !C || s.teams !== 20 || s.roster !== 10) return null;
+  const n = myPicksFrom(state.picks.length + 1, 1)[0], step = P.picks.indexOf(n);
+  if (step < 0) return null;
+  const live = liveRosters(), mine = live.rosters[s.slot - 1];
+  let list, avoid;
+  if (step === 0) { list = P.prio; avoid = P.avoid; }
+  else {
+    const g = mine.length ? P.groups[C.all[mine[0]].n] : null;
+    if (!g) return { n, step, off: true };
+    list = step === 1 ? g.p2 : g.p3; avoid = step === 1 ? g.avoid2 : g.avoid3;
+  }
+  const idx = nm => C.all.findIndex(p => p.n === nm);
+  const rows = list.map(([nm, e]) => ({ nm, e, i: idx(nm) })).filter(r => r.i >= 0);
+  const first = rows.find(r => live.avail[r.i]);
+  return { n, step, list: rows, avoid: avoid.filter(nm => { const i = idx(nm); return i >= 0 && live.avail[i] && !rows.some(r => r.nm === nm); }), pick: first ? first.i : -1, avail: live.avail };
+}
 
 function seeded(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function gauss(r) { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
@@ -1263,10 +1308,11 @@ async function runCoach() {
   $("coachStatus").textContent = "simulating…";
   prepareCoach();
   const start = liveRosters(), nC = C.nC;
-  const keys = [];
-  for (let k = 0; k < COACH_SIMS; k++) { const r = seeded(7919 * (state.picks.length + 1) + k); keys.push(Float64Array.from(C.am, (m, i) => m + gauss(r) * C.as[i])); }
   // the room as read so far: each simulated draft plays every opponent in a style drawn from its odds
-  const read = readRoom(), ctxs = keys.map((_, k) => oppContext(k, read));
+  const read = readRoom(), keys = [], ctxs = [];
+  const ensure = K => { while (keys.length < K) { const k = keys.length, r = seeded(7919 * (state.picks.length + 1) + k);
+    keys.push(Float64Array.from(C.am, (m, i) => m + gauss(r) * C.as[i])); ctxs.push(oppContext(k, read)); } };
+  ensure(COACH_SIMS);
   /* Each option is judged on what decides this league: finishing top PLAYOFF_TEAMS of 20 over a season, not the
      average week. Every simulated draft is played as COACH_SEASONS seasons (injuries as blocks of weeks, see
      playSeason) and scored by a smoothed playoff chance: each season counts Phi(margin / PO_SMOOTH), where margin is
@@ -1276,22 +1322,23 @@ async function runCoach() {
      boom-or-bust one with the same average. The weekly win rate and the chance of a 3+ week losing run are
      reported beside it. Seasons are seeded by draft and season number only, so every option meets the same luck. */
   const PO_SMOOTH = 0.75;   // wins; about the half-game tie and tiebreak fuzz around the line
-  const evalRuns = async (punts, forced) => {
-    let w = 0, po = 0, streak = 0, mg = 0, pos = 0; const cp = new Float64Array(nC), per = new Float64Array(COACH_SIMS);
-    for (let k = 0; k < COACH_SIMS; k++) {
+  // drafts k0..k1-1 added to a running total (acc), so a later batch sharpens an earlier answer
+  const evalRuns = async (punts, forced, k0 = 0, k1 = COACH_SIMS, acc = null) => {
+    const a = acc || { w: 0, po: 0, streak: 0, mg: 0, cp: new Float64Array(nC), per: [] };
+    for (let k = k0; k < k1; k++) {
       const R = rollout(start, keys[k], punts, forced, ctxs[k]), sfs = R.map(startRates);
-      const a = scoreLeague(R, C.mu, sfs), b = scoreLeague(R, C.muB, sfs);
-      w += (a.win + b.win) / 2; for (let j = 0; j < nC; j++) cp[j] += (a.catP[j] + b.catP[j]) / 2;
+      const x = scoreLeague(R, C.mu, sfs), y = scoreLeague(R, C.muB, sfs);
+      a.w += (x.win + y.win) / 2; for (let j = 0; j < nC; j++) a.cp[j] += (x.catP[j] + y.catP[j]) / 2;
       let m = 0, ps = 0;
       for (let q = 0; q < COACH_SEASONS; q++) {
         const res = playSeason(R, sfs, 500009 * (state.picks.length + 1) + 7919 * k + q).me;
-        m += res.margin; ps += Phi(res.margin / PO_SMOOTH); if (res.rank <= PLAYOFF_TEAMS) po++; if (res.longestLoss >= 3) streak++;
+        m += res.margin; ps += Phi(res.margin / PO_SMOOTH); if (res.rank <= PLAYOFF_TEAMS) a.po++; if (res.longestLoss >= 3) a.streak++;
       }
-      per[k] = ps / COACH_SEASONS; mg += m / COACH_SEASONS; pos += per[k];
+      a.per.push(ps / COACH_SEASONS); a.mg += m / COACH_SEASONS;
       if (k % 4 === 3) { await tick(); if (token !== coachToken) throw "stale"; }
     }
-    const S = COACH_SIMS * COACH_SEASONS;
-    return { obj: pos / COACH_SIMS, po: pos / COACH_SIMS, poRaw: po / S, margin: mg / COACH_SIMS, streak: streak / S, win: w / COACH_SIMS, catP: Array.from(cp, x => x / COACH_SIMS), per };
+    const K = a.per.length, S = K * COACH_SEASONS, pos = a.per.reduce((u, v) => u + v, 0);
+    return { acc: a, K, obj: pos / K, po: pos / K, poRaw: a.po / S, margin: a.mg / K, streak: a.streak / S, win: a.w / K, catP: Array.from(a.cp, v => v / K), per: a.per };
   };
   // every option sees the same simulated drafts, so compare them pairwise: is a gap bigger than the noise?
   const gap = (x, y) => {
@@ -1306,14 +1353,19 @@ async function runCoach() {
       if (Array.isArray(punts) && !punts.every(c => s.cats.includes(c))) continue;
       builds[name] = await evalRuns(punts, null);
     }
-    const ranked = Object.entries(builds).sort((a, b) => b[1].obj - a[1].obj);
-    // only switch away from balanced when a build is ahead by more than the simulation noise (2 standard errors
-    // and at least 2 points of playoff chance); otherwise the label would flip on chance
-    const balanced = builds["Balanced"];
-    const g = balanced ? gap(ranked[0][1], balanced) : null;
-    const clear = !balanced || (g.diff >= 0.02 && g.diff > 2 * g.se);
-    const [bestName, best] = clear ? ranked[0] : ["Balanced", balanced];
-    const bestPunts = COACH_BUILDS[bestName];
+    let ranked, bestName, best;
+    /* only switch away from balanced when a build is ahead by more than the simulation noise; the first pass (24
+       drafts) needs a wider margin, because the candidates below are simulated under the build chosen here and a
+       punt read off too few drafts was seen recommending punt FG% at pick 16 (17 Oct). The builds are sharpened
+       with the candidates, and the card shows the sharpened verdict. */
+    const decide = strict => {
+      ranked = Object.entries(builds).sort((a, b) => b[1].obj - a[1].obj);
+      const balanced = builds["Balanced"], g = balanced ? gap(ranked[0][1], balanced) : null;
+      const clear = !balanced || (strict ? g.diff >= 0.04 && g.diff > 3 * g.se : g.diff >= 0.02 && g.diff > 2 * g.se);
+      [bestName, best] = clear ? ranked[0] : ["Balanced", balanced];
+    };
+    decide(true);
+    const bestPunts = COACH_BUILDS[bestName], simBuild = bestName;
     // not on the clock: how often is each player still there when your pick comes round?
     const n0 = state.picks.length + 1, nNext = myPicksFrom(n0, 1)[0];
     let availP = null;
@@ -1334,15 +1386,39 @@ async function runCoach() {
     if (availP) for (let i = 0; i < C.N; i++) if (availP[i] < 0.3) tmpAvail[i] = 0;
     for (let n = 0; n < COACH_CANDIDATES - 3; n++) { const i = coachPick(roster, tmpAvail, bestPunts); if (i < 0) break; cand.push(i); tmpAvail[i] = 0; }
     for (let n = 0; n < 3; n++) { const i = coachPick(roster, tmpAvail, null); if (i < 0) break; cand.push(i); tmpAvail[i] = 0; }
+    // the plan's pick is always tested, so plan and coach are compared on the same drafts
+    const pl = planFor(); if (pl && pl.pick >= 0 && !cand.includes(pl.pick)) cand.push(pl.pick);
+    /* how likely each player is to last to your pick AFTER this one: the tiebreak among even options (take the one
+       that won't come back). Opponents only; your own pick in between is left out, a small optimism. */
+    const [nA, nB] = myPicksFrom(n0, 2), nAfter = nA === n0 ? nB : myPicksFrom(nA + 1, 1)[0];
+    let lasts = null;
+    if (nAfter) {
+      lasts = new Float64Array(C.N);
+      for (let k = 0; k < COACH_SIMS; k++) {
+        const av = start.avail.slice(), ro = start.rosters.map(r => r.slice());
+        for (let n = n0; n < nAfter; n++) { const t = teamForPick(n) - 1; if (t === me) continue;
+          const pick = oppChoice(t, av, ro, keys[k], ctxs[k], n, null); if (pick >= 0) { av[pick] = 0; ro[t].push(pick); } }
+        for (let i = 0; i < C.N; i++) if (av[i]) lasts[i] += 1 / COACH_SIMS;
+      }
+    }
     const picks = [];
     for (const i of cand) picks.push({ i, avail: availP ? availP[i] : 1, ...(await evalRuns(bestPunts, i)) });
-    picks.sort((a, b) => b.obj - a.obj);
-    // candidates within the noise of #1 are a tie: pick among them on taste, fit or position need
-    for (const c of picks.slice(1)) { const q = gap(picks[0], c); c.tie = q.diff <= 2 * q.se || q.diff < 0.01; }
-    coachResult = { at: state.picks.length, builds: ranked, bestName, best, picks, cats: C.cats.slice(), room: roomSummary(read) };
-    renderCoach();
-    renderBoard();
-    renderMyTeam();
+    // candidates within the noise of #1 are a tie: pick among them on need (renderCoach shows why each one)
+    const rank = () => { picks.sort((a, b) => b.obj - a.obj); picks[0].tie = false;
+      for (const c of picks.slice(1)) { const q = gap(picks[0], c); c.tie = q.diff <= 2 * q.se || q.diff < 0.01; } };
+    const publish = done => { rank();
+      coachResult = { at: state.picks.length, builds: ranked, bestName, best, picks, cats: C.cats.slice(), room: roomSummary(read),
+                      sims: picks[0].K, done, lasts, nAfter, plan: pl, simBuild };
+      renderCoach(); renderBoard(); renderMyTeam(); };
+    publish(false);
+    // keep sharpening the candidates until the next pick lands (a new pick bumps coachToken and evalRuns throws)
+    for (let K = COACH_SIMS; K < COACH_REFINE_TO; K += COACH_SIMS) {
+      ensure(K + COACH_SIMS);
+      for (const c of picks) Object.assign(c, await evalRuns(bestPunts, c.i, K, K + COACH_SIMS, c.acc));
+      for (const [nm, b] of Object.entries(builds)) Object.assign(b, await evalRuns(COACH_BUILDS[nm], null, K, K + COACH_SIMS, b.acc));
+      decide(false);
+      publish(K + COACH_SIMS >= COACH_REFINE_TO);
+    }
   } catch (e) { if (e !== "stale") throw e; }
 }
 
@@ -1355,13 +1431,30 @@ function scheduleCoach() {
   else renderCoach();
 }
 
+/* the one pick to make, and why. Order of rules:
+   1. the plan's pick, when it is the coach's #1 or within its noise: the plan ran 500 drafts per option before the
+      draft, the coach a few dozen live, so a tie goes to the plan (17 Oct: the 400-draft coach agreed with it);
+   2. the coach's #1 when it beats the plan's pick by more than the noise: this draft has gone differently;
+   3. no plan: a clear #1, or among even options the one least likely to last to your following pick, so the
+      others can still come back to you. */
+function coachSuggest(r) {
+  const top = r.picks[0], group = r.picks.filter((c, n) => n === 0 || c.tie);
+  const pl = r.plan, pc = pl && pl.pick >= 0 ? r.picks.find(c => c.i === pl.pick) : null;
+  if (pc && (pc === top || pc.tie)) return { i: pc.i, why: pc === top ? "the plan's pick, and the coach's #1 on this draft" : "the plan's pick, and level with the coach's #1 on this draft (the plan tested it on 500 drafts)" };
+  if (pc) return { i: top.i, why: `the coach has the plan's ${C.all[pc.i].n} clearly behind on this draft (${Math.round(100 * (pc.obj - top.obj))} playoff pts over ${r.sims} drafts), so this draft has gone differently from the plan` };
+  if (group.length < 2) return { i: top.i, why: `a clear #1 over ${r.sims} drafts` };
+  if (!r.lasts) return { i: top.i, why: "level with the others; your last pick, so the coach's #1" };
+  const sc = group.slice().sort((a, b) => r.lasts[a.i] - r.lasts[b.i] || b.obj - a.obj)[0];
+  return { i: sc.i, why: `level with the others, and the least likely of them to last to your pick #${r.nAfter} (${Math.round(100 * r.lasts[sc.i])}%)` };
+}
+
 function renderCoach(msg) {
   const el = $("coach"), s = state.settings;
   if (msg) { el.innerHTML = `<p class="sub">${esc(msg)}</p>`; $("coachStatus").textContent = ""; return; }
   if (!s.slot) { el.innerHTML = `<p class="sub">Set your draft slot in League settings and the coach simulates the rest of the draft after every pick.</p>`; $("coachStatus").textContent = ""; return; }
   if (!coachResult) { el.innerHTML = `<p class="sub">Working out your best path…</p>`; $("coachStatus").textContent = ""; return; }
   const r = coachResult, stale = r.at !== state.picks.length;
-  $("coachStatus").textContent = stale ? "out of date, refresh" : `after pick ${r.at}`;
+  $("coachStatus").textContent = stale ? "out of date, refresh" : `after pick ${r.at} · ${r.sims} drafts${r.done ? "" : ", sharpening…"}`;
   const bal = r.builds.find(([n]) => n === "Balanced");
   const edge = bal ? 100 * (r.best.po - bal[1].po) : 0;
   const punts = COACH_BUILDS[r.bestName];
@@ -1369,9 +1462,32 @@ function renderCoach(msg) {
   // bestName is only a punt when it beat balanced beyond the noise (see runCoach)
   const applyBtn = Array.isArray(punts) && punts.length && !applied ? `<button class="btn" id="coachApply">Apply: punt ${punts.map(esc).join(" + ")} (${edge >= 0 ? "+" : ""}${edge.toFixed(0)} playoff pts)</button>` : "";
   const buildLine = r.builds.slice(0, 3).map(([n, v]) => `${esc(n)} ${(100 * v.po).toFixed(0)}% playoffs`).join(" · ");
-  const catChips = r.cats.map((c, j) => { const q = r.best.catP[j]; return `<span style="${chipStyle((q - 0.5) * 5)}" title="Chance of winning ${esc(c)} in a typical week">${esc(c)} ${Math.round(100 * q)}%</span>`; }).join("");
-  const top = r.picks[0], openSlots = openSlotMasks();
-  const cands = r.picks.slice(0, 6).map((c, n) => {
+  const catChips = r.cats.map((c, j) => { const q = r.picks[0].catP[j]; return `<span style="${chipStyle((q - 0.5) * 5)}" title="Chance of winning ${esc(c)} in a typical week">${esc(c)} ${Math.round(100 * q)}%</span>`; }).join("");
+  const top = r.picks[0], openSlots = openSlotMasks(), sug = coachSuggest(r), sp = C.all[sug.i];
+  const fillsOf = p => openSlots.filter(sl => SLOT_MASK[sl] & posMask(p));
+  // the even group: #1 and everything within its noise, each with what it adds (weekly win chance by category,
+  // against the group's average) and whether it will come back to you
+  const group = r.picks.filter((c, n) => n === 0 || c.tie);
+  const mean = r.cats.map((_, j) => group.reduce((a, c) => a + c.catP[j], 0) / group.length);
+  const helps = c => r.cats.map((cat, j) => [cat, 100 * (c.catP[j] - mean[j])]).filter(x => x[1] >= 0.4).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([cat, d]) => `${esc(cat)} +${d < 1 ? d.toFixed(1) : d.toFixed(0)}`).join(", ") || "about the group average";
+  const evenRows = group.length >= 2 ? group.map(c => { const p = C.all[c.i], fl = fillsOf(p);
+    return `<tr><td class="n">${esc(p.n)}${c.i === sug.i ? ` <span class="tag sugtag">suggested</span>` : ""}<div class="sub">${esc(p.pos5 || p.p || "")}${fl.length ? ` · fills ${esc(fl.join("/"))}` : ""}</div></td>
+      <td>${helps(c)}</td><td class="w">${Math.round(100 * c.po)}%</td><td class="w">${r.lasts ? `${Math.round(100 * r.lasts[c.i])}%` : "–"}</td>
+      <td><button data-coach-k="${esc(p.key)}">Mine</button></td></tr>`; }).join("") : "";
+  const evenBox = evenRows ? `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Even picks: the simulations can't separate these (${r.sims} drafts${r.done ? "" : ", still sharpening"}), so choose on need</div>
+    <table class="even"><thead><tr><td class="sub">Player</td><td class="sub">Helps most (weekly win %, vs these)</td><td class="sub">Playoffs</td><td class="sub">${r.nAfter ? `Lasts to #${r.nAfter}` : "Lasts"}</td><td></td></tr></thead><tbody>${evenRows}</tbody></table>` : "";
+  const suggestBox = `<div class="suggest">Suggested: <b>${esc(sp.n)}</b><button data-coach-k="${esc(sp.key)}">Mine</button><div class="sub">${esc(sug.why)}.</div></div>`;
+  // the pre-draft plan for this pick, beside the coach's own ranking
+  const pl = r.plan; let planBox = "";
+  if (pl && pl.off) planBox = `<div class="planbox">Plan: your first pick was not one the plan covered, so from here it's the coach's live read.</div>`;
+  else if (pl) {
+    const coachRank = i => { const k = r.picks.findIndex(c => c.i === i); return k < 0 ? "" : k === 0 ? "coach #1" : r.picks[k].tie ? `coach #${k + 1}, level` : `coach #${k + 1}`; };
+    const items = pl.list.filter(x => pl.avail[x.i]).slice(0, 5).map((x, k) => `${k ? "" : "<b>"}${esc(x.nm)}${k ? "" : "</b>"}${x.e ? ` (${x.e > 0 ? "+" : ""}${x.e})` : ""}${coachRank(x.i) ? ` <span class="sub">${coachRank(x.i)}</span>` : ""}`).join(" · ");
+    planBox = `<div class="planbox"><b>Plan for pick ${pl.n}</b> (500 drafts per option before the draft; edge in playoff pts): ${items || "none of its players are left"}${pl.avoid.length ? `<br>Not at this pick: ${pl.avoid.map(esc).join(", ")}` : ""}</div>`;
+  }
+  const rest = r.picks.filter(c => !group.includes(c) || group.length < 2);
+  const cands = rest.slice(0, 6).map((c) => { const n = r.picks.indexOf(c);
     const p = C.all[c.i];
     const d = 100 * (c.obj - top.obj);
     const there = c.avail < 0.995 ? ` · ${Math.round(100 * c.avail)}% there` : "";
@@ -1381,15 +1497,16 @@ function renderCoach(msg) {
     return `<li><span class="w">${n + 1}</span><span class="n" title="${esc(p.n)}">${esc(p.n)}${tags}</span><span class="w" title="Chance of making the playoffs if you take him">${Math.round(100 * c.po)}%${n ? ` (${d.toFixed(0)})` : ""}${there}</span><button data-coach-k="${esc(p.key)}">Mine</button></li>`;
   }).join("");
   el.innerHTML = `<div class="${stale ? "stale" : ""}">
-    <div class="big">${(100 * r.best.po).toFixed(0)}%</div>
-    <div class="sub">chance of finishing top ${PLAYOFF_TEAMS} following <b>${esc(r.bestName)}</b> · ${(r.best.margin >= 0 ? "+" : "") + r.best.margin.toFixed(1)} wins vs the playoff line · weekly win rate ${(100 * r.best.win).toFixed(0)}% · a 3+ week losing run in ${(100 * r.best.streak).toFixed(0)}% of seasons (${COACH_SIMS} drafts × ${COACH_SEASONS} seasons per option, injuries as blocks of missed weeks)</div>
+    <div class="big">${(100 * top.po).toFixed(0)}%</div>
+    <div class="sub">chance of finishing top ${PLAYOFF_TEAMS} taking the coach's #1 and following <b>${esc(r.simBuild || r.bestName)}</b> · ${(top.margin >= 0 ? "+" : "") + top.margin.toFixed(1)} wins vs the playoff line · weekly win rate ${(100 * top.win).toFixed(0)}% · a 3+ week losing run in ${(100 * top.streak).toFixed(0)}% of seasons (${r.sims} drafts × ${COACH_SEASONS} seasons per option, injuries as blocks of missed weeks)</div>
     <div class="catwin">${catChips}</div>
     <div class="sub">Builds from here: ${buildLine}${r.bestName === "Balanced" && r.builds[0][0] !== "Balanced" ? ". The gaps are within the simulation noise, so stay balanced." : ""}</div>
     <div class="sub">This assumes the rest of the draft plays out like the simulations, so it moves as real picks land. Compare options with each other rather than reading it as a forecast.</div>
     ${r.room ? `<div class="sub" style="margin-top:4px">Other teams simulated as: ${esc(r.room)}</div>` : ""}
     ${applyBtn}
-    <div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">Best pick ${teamForPick(state.picks.length + 1) === s.slot ? "now" : "if still there at your pick"}</div>
-    <ol class="cands">${cands}</ol></div>`;
+    ${suggestBox}${planBox}${evenBox}
+    ${cands ? `<div class="note" style="margin-top:10px;font-weight:600;color:var(--ink)">${evenBox ? "Next best" : `Best pick ${teamForPick(state.picks.length + 1) === s.slot ? "now" : "if still there at your pick"}`}</div>
+    <ol class="cands">${cands}</ol>` : ""}</div>`;
   const b = $("coachApply");
   if (b) b.onclick = () => changeSettings(st => { st.punts = punts.filter(c => st.cats.includes(c)); });
 }

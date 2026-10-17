@@ -100,6 +100,27 @@ window.DraftCore = (() => {
     return { n, list: list.map(x => x.p) };
   }
 
+  /* The pre-draft plan (D.plan, exported from the Draft Room: 500 simulated drafts per option, 17 Oct 2026) for
+     your first three picks when your slot has one (12, 16 or 17 in a 20-team, 10-round league). Fit below has no
+     lookahead, and on these picks the plan disagreed with it (e.g. KAT over Duren at 16), so it is shown first.
+     Pick 2 and 3 depend on who you took first; if that was off the plan, Fit takes over. */
+  function planLine(S, a, nextPick) {
+    const PL = D.plan && D.plan[S.slot]; if (!PL || S.T !== 20 || S.R !== 10) return "";
+    const step = PL.picks.indexOf(nextPick); if (step < 0) return "";
+    let list, avoid;
+    if (step === 0) { list = PL.prio; avoid = PL.avoid; }
+    else {
+      const g = a.roster.length ? PL.groups[P[a.roster[0]].n] : null;
+      if (!g) return `<p class="note">Plan: your first pick wasn't one the plan covered, so use Fit below from here.</p>`;
+      list = step === 1 ? g.p2 : g.p3; avoid = step === 1 ? g.avoid2 : g.avoid3;
+    }
+    const byName = nm => P.find(p => p.n === nm);
+    const left = list.map(([nm, e]) => ({ p: byName(nm), e })).filter(x => x.p && !S.taken.has(x.p.i));
+    const skip = avoid.filter(nm => { const p = byName(nm); return p && !S.taken.has(p.i) && !list.some(x => x[0] === nm); });
+    if (!left.length) return `<p class="note">Plan for pick #${nextPick}: none of its players are left, so use Fit below.</p>`;
+    return `<div class="planbox"><b>Plan for pick #${nextPick}: ${esc(left[0].p.n)}</b>${left.length > 1 ? ` <span class="sub">if gone: ${left.slice(1, 4).map(x => esc(x.p.n)).join(", ")}</span>` : ""}${skip.length ? `<br><span class="sub">Not at this pick: ${skip.map(esc).join(", ")}</span>` : ""}<br><span class="sub">From 500 simulated drafts per option before the draft. Fit below takes over after your third pick.</span></div>`;
+  }
+
   function advice(S, teamId) {
     const roster = S.rosters.get(teamId) || [], k = roster.length;
     const tz = teamZ(roster), pz = parZ(S, Math.max(1, k));
@@ -143,6 +164,7 @@ window.DraftCore = (() => {
     .note { color: #5b6578; font-size: 11.5px; }
     .big { font-size: 13.5px; font-weight: 700; margin: 2px 0 6px; }
     .warnbox { background: #fff4e5; border: 1px solid #f5c48a; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+    .planbox { background: #eef4ff; border: 1px solid #a9c2f2; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 10.5px; color: #5b6578; font-weight: 600; padding: 3px 4px; border-bottom: 1px solid #e3e8f0; }
     td { padding: 4px; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
@@ -227,7 +249,7 @@ window.DraftCore = (() => {
         `<br>${esc(teamName(x.id))} (#${x.l.n}): likely ${x.l.list.map(p => esc(p.n)).join(" · ")}`).join("")}</div>` : "";
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
-        ${modelsLine}
+        ${planLine(S, a, nextPick)}${modelsLine}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
         <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead><tbody>${rows}</tbody></table>
