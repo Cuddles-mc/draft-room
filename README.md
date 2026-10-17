@@ -3,7 +3,7 @@
 Fantasy basketball draft tools for a 20-team ESPN H2H 11-cat league (9-cat + 3P% + DD, 10-man rosters).
 
 ## 1. ESPN draft room extension (Chrome, for whoever runs it)
-Adds a side panel to the ESPN draft room that follows the draft by itself: best pick for your team, category balance, the draft buckets ticking off live (pink = injury risk in his healthy bucket, gold = rookie), a league table, and a **Share** tab that broadcasts the draft to the live page below.
+Adds a side panel to the ESPN draft room that follows the draft by itself: your options grouped by bucket (1.4.0: ESPN's own ranked list is on screen beside it, so the panel shows choices, not a second list), category balance, the draft buckets ticking off live (pink = injury risk in his healthy bucket, gold = rookie), a league table, and a **Share** tab that broadcasts the draft to the live page below.
 
 1. Download [draft-helper-extension.zip](https://github.com/Cuddles-mc/draft-room/raw/main/draft-helper-extension.zip) and unzip it.
 2. In Chrome go to `chrome://extensions` and turn on **Developer mode** (top right).
@@ -23,6 +23,6 @@ Open the link the host shares (`https://cuddles-mc.github.io/draft-room/live.htm
 **Put it on your phone like an app:** iPhone: Safari → Share → *Add to Home Screen*. Android: Chrome menu → *Install app* / *Add to Home screen*. It reopens your draft and team.
 
 ## 3. Draft room page (manual)
-https://cuddles-mc.github.io/draft-room/ — mark picks yourself; saves in your browser. Its **Reading the room** card reads how each team is drafting, and has a **Leans on a model** setting for a team that has the advice but picks for itself: it starts 60% likely to follow the model and its own picks move that either way. Its coach suggests one pick, then shows a **Your choice** group: the options it can't separate plus a rookie and an injury reach, each with its playoff cost, whether he lasts to your next pick, and what he changes category by category. It also shows your likely path at later picks and the plan's buckets, and keeps sharpening while you're on the clock.
+https://cuddles-mc.github.io/draft-room/ — mark picks yourself; saves in your browser. The board opens as **Buckets** (the extension's tiers, with the coach's suggested and even picks marked; tap a player to mark him) with a **List** view one tap away. Its **Reading the room** card reads how each team is drafting, and has a **Leans on a model** setting for a team that has the advice but picks for itself: it starts 60% likely to follow the model and its own picks move that either way. Its coach suggests one pick, then shows a **Your choice** group: the options it can't separate plus a rookie and an injury reach, each with its playoff cost, whether he lasts to your next pick, and what he changes category by category. It also shows your likely path at later picks and the plan's buckets, and keeps sharpening while you're on the clock.
 
 Updates travel through ntfy.sh, a free public relay: anyone with the link can see the picks; nothing else is sent.

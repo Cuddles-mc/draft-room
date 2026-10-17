@@ -172,6 +172,9 @@ window.DraftCore = (() => {
     .note { color: #5b6578; font-size: 11.5px; }
     .big { font-size: 13.5px; font-weight: 700; margin: 2px 0 6px; }
     .warnbox { background: #fff4e5; border: 1px solid #f5c48a; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+    tr.bkhead td { background: #f1f3f7; font-weight: 600; font-size: 11.5px; padding: 3px 6px; color: #445; }
+    tr.sugrow td { background: #fff3ea; }
+    .tag.sug { background: #c75b1e; color: #fff; border-color: #c75b1e; }
     .planbox { background: #eef4ff; border: 1px solid #a9c2f2; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
     .planbox .pb { display: inline-block; padding: 0 5px; margin: 1px 0; border: 1px solid #c9d6ee; border-radius: 4px; background: #fff; }
     .planbox .pb1 { border-color: #6f95e0; font-weight: 600; }
@@ -246,16 +249,24 @@ window.DraftCore = (() => {
       if (!S.next.length) return `<div class="row">${picker("Team", S.my, "my")}</div><p class="big">Roster full. Good luck!</p>`;
       const a = advice(S, S.my), nextPick = S.next[0], after = S.next[1], away = nextPick - S.made - 1, open = openSlots(a.roster);
       const top = liveBuckets(S)[0];
-      const rows = a.list.slice(0, 10).map(({ p, fit }) => {
+      /* options grouped by bucket (the same tiers as the Buckets tab), best Fit first inside each: ESPN's own ranked
+         list is on screen beside this panel, so this view is for choosing among options rather than a second list.
+         The top Fit is marked suggested; the best rookie and injury gamble below the top 10 are offered as reaches. */
+      const top10 = a.list.slice(0, 10), inTop = new Set(top10.map(x => x.p.i));
+      const reach = [["rookie", x => x.p.rk], ["injury", x => x.p.hl]].map(([kind, f]) => { const x = a.all.find(y => f(y) && !inTop.has(y.p.i)); return x ? { ...x, kind } : null; }).filter(Boolean);
+      const row = ({ p, fit }, k, kind) => {
         const helps = CATS.filter((c, j) => p.z[j] >= 0.8), hurts = CATS.filter((c, j) => p.z[j] <= -0.8);
         let risk = "";
         if (p.adp != null && p.adp < nextPick) risk = `<span class="tag warn" title="League ADP ${p.adp}">likely gone</span>`;
         else if (p.adp != null && after && p.adp < after) risk = `<span class="tag info">won't come back</span>`;
         const fills = open.filter(s => s !== "UTIL" && (SLOT_MASK[s] & p.mask));
-        return `<tr><td>${p.r}</td><td class="n">${esc(p.n)}${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">injury risk</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}
+        return `<tr${k === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${k === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}${esc(p.n)}${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">injury risk</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · bucket ${p.b ?? "–"} · ADP ${p.adp ?? "–"}</span>
           <span class="sub"><span class="g">${helps.join(" ")}</span>${hurts.length ? ` · <span class="r">${hurts.join(" ")}</span>` : ""}</span></td><td>${fit.toFixed(1)}</td></tr>`;
-      }).join("");
+      };
+      const groups = new Map(); top10.forEach((x, k) => { const b = x.p.b ?? 99; if (!groups.has(b)) groups.set(b, []); groups.get(b).push(row(x, k)); });
+      const rows = [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs]) => `<tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr>${rs.join("")}`).join("") +
+        (reach.length ? `<tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}` : "");
       // model users picking before me: who they will most likely take
       const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
       const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b> <span class="sub">(if they follow it: they can still pick for themselves)</span>${before.map(x =>
@@ -266,7 +277,7 @@ window.DraftCore = (() => {
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
         <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead><tbody>${rows}</tbody></table>
-        <p class="note">Fit = board value, leaning toward categories you're behind in. "Likely gone" = league ADP is before your pick.</p>`;
+        <p class="note">Your options by bucket, best Fit first in each. Fit = board value, leaning toward categories you're behind in; the suggested pick is the top Fit. "Likely gone" = league ADP is before your pick.</p>`;
     }
 
     function team() {

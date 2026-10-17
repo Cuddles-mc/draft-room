@@ -147,6 +147,28 @@ table.even button { padding: 2px 7px; border-radius: 5px; border: 1px solid colo
 .chh .n { font-weight: 600; flex: 1 1 140px; min-width: 0; }
 .chh .w { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 .chh button { padding: 2px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mine) 50%, var(--line)); background: var(--panel); color: var(--mine); font-size: 12px; font-weight: 600; }
+.viewtog { display: flex; gap: 6px; margin: 4px 0 8px; }
+.viewtog .btn.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.bk { border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; margin-bottom: 8px; background: var(--panel); }
+.bk.adpnow { border: 2px solid var(--pos); }
+.bk h3 { margin: 0 0 5px; font: 600 13px var(--body); color: var(--ink); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.bk h3 small { font-weight: 400; color: var(--muted); }
+.bchips { display: flex; flex-wrap: wrap; gap: 5px; }
+.bc { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 7px; font: 500 12.5px var(--body); cursor: pointer; text-align: left; }
+.bc small { color: var(--muted); font-weight: 400; margin-left: 3px; }
+.bc.inj { background: color-mix(in srgb, var(--neg) 10%, var(--panel)); border-color: color-mix(in srgb, var(--neg) 40%, var(--line)); }
+.bc.rook { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.bc.punt { border-style: dashed; }
+.bc.even { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.bc.sug { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 700; }
+.bc.sug small { color: var(--panel); }
+.bc.gone { text-decoration: line-through; opacity: .45; cursor: default; }
+.bc.mine { background: var(--mine); color: var(--panel); border-color: var(--mine); text-decoration: none; opacity: 1; }
+.bc.open { outline: 2px solid var(--ink); }
+.bdet { margin-top: 7px; padding: 7px 9px; border-radius: 7px; background: var(--soft); font-size: 12.5px; }
+.bdet .acts { margin-top: 6px; display: flex; gap: 6px; }
+.blegend { font-size: 12px; color: var(--muted); margin: 0 0 8px; line-height: 1.6; }
+.blegend .bc { cursor: default; padding: 0 5px; font-size: 11.5px; }
 .dchip { display: inline-block; padding: 0 5px; margin: 1px 3px 1px 0; border-radius: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .planbox b { color: var(--ink); }
 .stale { opacity: .55; }
@@ -244,7 +266,9 @@ ol.room { list-style: none; margin: 6px 0 0; padding: 0; }
       <div class="tablewrap"><table class="mine-t"><thead id="mtHead"></thead><tbody id="mtBody"></tbody><tfoot id="mtFoot"></tfoot></table></div>
       <h2 class="boardh">Available players</h2>
     </div>
-    <div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+    <div class="viewtog" role="group" aria-label="Board view"><button class="btn" data-view="buckets">Buckets</button><button class="btn" data-view="list">List</button></div>
+    <div id="bucketView" hidden></div>
+    <div class="tablewrap" id="listWrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
     <button class="btn more" id="more" hidden>Show more players</button>
     <details class="card" id="mocksCard" style="margin-top:16px" open>
       <summary>My mock drafts <small id="mocksCount" style="font-family:var(--body);font-size:12px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0"></small></summary>
@@ -705,7 +729,72 @@ function renderClock() {
   const ss = $("setSlot"); if (ss) ss.onclick = () => { $("settings").open = true; $("sSlot").focus(); };
 }
 
+/* ---------- bucket view (default board) ----------
+   The same buckets as the ESPN extension (EXT, generated from its data.js, so a player sits in the same bucket on
+   both screens): tiers by board rank, an injury risk placed in the tier of his HEALTHY rank (pink), punt-only value
+   dashed, rookies gold. The coach's read is drawn on top: the suggested pick filled, the rest of its even group
+   ringed, reaches marked. ESPN's own ADP list is on screen in the real draft, so this view is for choosing among
+   options, not for finding names; the list view is one tap away. Tap a player for his line and Mine / Taken. */
+const EXT = {"buckets":[[1,1,1],[2,2,2],[3,3,4],[4,7,13],[5,7,14],[6,7,10],[7,14,23],[8,21,28],[9,17,38],[10,24,33],[11,29,48],[12,30,49],[13,36,60],[14,44,82],[15,55,94],[16,63,94],[17,72,108],[18,85,106],[19,79,139],[20,100,159],[21,111,174],[22,118,181],[23,111,187],[24,134,176],[25,130,188],[26,150,195]],"p":{"Nikola Jokic":[1,0,null],"Victor Wembanyama":[2,0,null],"Shai Gilgeous-Alexander":[3,0,null],"Luka Doncic":[3,0,null],"Cade Cunningham":[4,0,null],"Jalen Johnson":[4,0,null],"Jayson Tatum":[4,0,null],"Karl-Anthony Towns":[4,0,null],"Scottie Barnes":[5,0,null],"Tyrese Maxey":[5,0,null],"Cooper Flagg":[5,0,null],"Anthony Edwards":[6,0,"punt AST"],"Donovan Mitchell":[6,0,null],"Giannis Antetokounmpo":[5,0,"punt FT"],"Bam Adebayo":[8,0,null],"Alperen Sengun":[7,0,"punt FT"],"Jalen Duren":[8,0,"punt 3s"],"Tyrese Haliburton":[7,0,null],"Jamal Murray":[8,0,null],"LaMelo Ball":[9,0,null],"Anthony Davis":[4,1,null],"Evan Mobley":[9,0,"punt FT"],"Kevin Durant":[9,0,null],"Josh Giddey":[9,0,null],"Amen Thompson":[9,0,"punt 3s"],"Donovan Clingan":[11,0,"punt 3s"],"Kawhi Leonard":[10,0,null],"James Harden":[10,0,"punt TO"],"Jalen Brunson":[10,0,null],"Chet Holmgren":[9,0,"punt AST"],"Austin Reaves":[10,0,null],"Stephen Curry":[10,0,null],"Derrick White":[11,0,"punt FG"],"Devin Booker":[12,0,null],"Kon Knueppel":[11,0,null],"Kel'el Ware":[13,0,null],"Trae Young":[11,0,null],"Deni Avdija":[12,0,null],"Paolo Banchero":[12,0,null],"Trey Murphy III":[12,0,null],"Jarrett Allen":[13,0,"punt 3s"],"Desmond Bane":[12,0,null],"Jalen Williams":[12,0,null],"Jaylen Brown":[13,0,null],"Lauri Markkanen":[12,0,"punt AST"],"Pascal Siakam":[13,0,null],"Onyeka Okongwu":[13,0,null],"Naz Reid":[13,0,null],"LeBron James":[13,0,null],"Walker Kessler":[13,0,"punt AST"],"Dyson Daniels":[14,0,"punt FT"],"Darius Garland":[14,0,null],"Michael Porter Jr.":[13,0,"punt AST"],"Brandon Miller":[13,0,null],"Matas Buzelis":[14,0,"punt AST"],"Joel Embiid":[12,1,null],"Ivica Zubac":[13,0,"punt 3s"],"Tyler Herro":[14,0,null],"Rudy Gobert":[14,0,"punt 3s"],"VJ Edgecombe":[14,0,null],"Jaren Jackson Jr.":[14,0,null],"De'Aaron Fox":[14,0,null],"Nickeil Alexander-Walker":[15,0,null],"Stephon Castle":[15,0,"punt TO"],"Mikal Bridges":[15,0,null],"Alex Sarr":[16,0,null],"Payton Pritchard":[15,0,null],"Julius Randle":[15,0,null],"Kyrie Irving":[13,0,null],"Immanuel Quickley":[15,0,null],"OG Anunoby":[15,0,null],"Caleb Wilson":[14,0,"punt 3s"],"Franz Wagner":[15,0,null],"Derik Queen":[18,0,null],"Keyonte George":[17,0,null],"Dejounte Murray":[16,0,null],"Jaden McDaniels":[16,0,null],"Nikola Vucevic":[21,0,null],"Paul George":[15,1,null],"Zion Williamson":[17,0,"punt FT"],"Jabari Smith Jr.":[17,0,null],"Ausar Thompson":[17,0,"punt 3s"],"Josh Hart":[18,0,null],"Zach Edey":[17,0,"punt 3s"],"Damian Lillard":[15,0,null],"Ryan Rollins":[16,0,null],"Miles Bridges":[18,0,null],"Neemias Queta":[19,0,null],"Dylan Harper":[16,0,null],"Cameron Boozer":[17,0,null],"Brandin Podziemski":[17,0,null],"Reed Sheppard":[19,0,null],"Ja Morant":[18,0,null],"Myles Turner":[16,0,"punt AST"],"Isaiah Hartenstein":[19,0,"punt 3s"],"Ty Jerome":[15,0,null],"Norman Powell":[18,0,null],"Keegan Murray":[19,0,null],"Collin Gillespie":[21,0,null],"Coby White":[18,0,null],"John Collins":[18,0,null],"Jalen Suggs":[19,0,null],"Fred VanVleet":[18,0,null],"Collin Murray-Boyles":[21,0,null],"Zach LaVine":[20,0,null],"CJ McCollum":[19,0,null],"Kevin Porter Jr.":[22,0,null],"Andrew Wiggins":[19,0,null],"Kristaps Porzingis":[14,1,null],"Nic Claxton":[20,0,null],"Jakob Poeltl":[17,1,"punt 3s"],"Daniel Gafford":[19,0,"punt 3s"],"Ayo Dosunmu":[22,0,null],"Peyton Watson":[20,0,null],"RJ Barrett":[20,0,null],"Jalen Green":[20,0,null],"Toumani Camara":[20,0,null],"Devin Vassell":[20,0,null],"Day'Ron Sharpe":[18,0,null],"AJ Dybantsa":[19,0,null],"Maxime Raynaud":[21,0,null],"Deandre Ayton":[23,0,"punt 3s"],"Cedric Coward":[21,0,null],"Julian Champagnie":[24,0,null],"Saddiq Bey":[23,0,null],"Brandon Ingram":[18,1,null],"Quentin Grimes":[23,0,null],"Donte DiVincenzo":[22,0,null],"Tari Eason":[24,0,null],"Cameron Johnson":[20,0,null],"Darius Acuff Jr.":[20,0,null],"Kyshawn George":[20,0,null],"Andrew Nembhard":[22,0,null],"Moussa Diabate":[20,0,"punt 3s"],"Jeremiah Fears":[24,0,null],"DeMar DeRozan":[23,0,null],"Tobias Harris":[25,0,null],"Mark Williams":[15,1,null],"Tre Jones":[25,0,null],"Yaxel Lendeborg":[19,0,null],"Egor Demin":[21,0,null],"Grayson Allen":[24,0,null],"Santi Aldama":[25,0,null],"Jrue Holiday":[24,0,null],"Julian Reese":[20,1,null],"P.J. Washington":[23,0,null],"Jaime Jaquez Jr.":[22,0,null],"Aaron Gordon":[21,0,null],"Wendell Carter Jr.":[23,0,null],"Mitchell Robinson":[21,0,null],"Jake LaRavia":[25,0,null],"Anthony Black":[24,0,null],"Kyle Filipowski":[26,0,null],"Christian Braun":[23,0,null],"Jaylin Williams":[26,0,null],"Ace Bailey":[23,0,null],"Brook Lopez":[24,0,null],"Jimmy Butler III":[19,1,null],"Collin Sexton":[24,0,null],"Darryn Peterson":[21,0,null],"Bobby Portis":[23,0,null],"Isaiah Jackson":[20,1,null],"Robert Williams III":[26,0,null],"Cam Spencer":[24,0,null],"Yves Missi":[20,0,"punt 3s"],"Bennedict Mathurin":[26,0,null],"Jalen Smith":[23,0,null],"Jaylon Tyson":[26,0,null],"Goga Bitadze":[20,0,null],"Dillon Brooks":[23,0,null],"Khaman Maluach":[22,0,null],"Rui Hachimura":[23,0,null],"Aaron Nesmith":[24,0,null],"Sandro Mamukelashvili":[24,0,null],"Jordan Goodwin":[23,0,null],"Isaiah Joe":[25,0,null],"Dereck Lively II":[22,1,null],"Joan Beringer":[25,0,null],"Russell Westbrook":[25,0,null],"Jerami Grant":[26,0,null],"Daniss Jenkins":[25,0,null],"Javon Small":[25,0,null],"Jusuf Nurkic":[26,0,null],"Draymond Green":[23,0,null],"Scotty Pippen Jr.":[26,0,null],"Davion Mitchell":[25,0,null],"Jonathan Kuminga":[24,0,null],"Sam Hauser":[26,0,null],"Moses Moody":[26,0,null],"Herbert Jones":[25,0,null],"Zaccharie Risacher":[26,0,null],"Pelle Larsson":[26,0,null],"GG Jackson":[26,0,null],"Aday Mara":[25,0,null],"Keon Ellis":[26,0,null],"Duncan Robinson":[25,0,null],"Matisse Thybulle":[22,0,null],"Jaxson Hayes":[22,0,null]}};
+let openChip = null, bucketsShown = 8;
+const boardView = () => { try { return localStorage.getItem("draftroom.view") || "buckets"; } catch (e) { return "buckets"; } };
+function renderBuckets() {
+  const s = state.settings, el = $("bucketView");
+  const taken = new Set(state.picks.map(p => p.k)), mineSet = new Set(state.picks.filter(p => p.mine).map(p => p.k));
+  const q = $("q").value.trim().toLowerCase(), posF = $("pos").value;
+  const match = p => (!q || p.n.toLowerCase().includes(q)) && (!posF || (posF === "ROOKIE" ? p.extra || isRookie(p) : (posMask(p) & (POS_BITS[posF] ?? GFC_BITS[posF]))));
+  const fresh = coachResult && coachResult.at === state.picks.length && C;
+  const sugK = fresh ? C.all[coachSuggest(coachResult).i].key : null;
+  const evenK = new Set(fresh ? coachResult.picks.filter((c, n) => n === 0 || c.tie).map(c => C.all[c.i].key) : []);
+  const reachK = new Map(fresh ? (coachResult.reaches || []).map(x => [C.all[x.i].key, x.kind]) : []);
+  const nNext = s.slot ? myPicksFrom(state.picks.length + 1, 1)[0] : null;
+  const byB = new Map();
+  // the extension's buckets end at board rank 200; later picks still need names, so ranks past that sit in plain
+  // groups of 25 ("201-225", ...) after the last bucket, and unranked rookies in one group at the end
+  const lastB = EXT.buckets[EXT.buckets.length - 1][0], extraB = [];
+  const bOf = p => { const e = EXT.p[p.n]; if (e) return e[0]; const r = V.rank.get(p.key);
+    if (r > 200) { const g = lastB + 1 + Math.floor((r - 201) / 25); if (!extraB.includes(g)) extraB.push(g); return g; }
+    if (p.extra) { if (!extraB.includes(999)) extraB.push(999); return 999; } return null; };
+  for (const p of [...players, ...extras]) { const b = bOf(p); if (b == null) continue; if (!byB.has(b)) byB.set(b, []); byB.get(b).push(p); }
+  const allB = [...EXT.buckets, ...extraB.sort((a, b) => a - b).map(g => [g, null, null, g === 999 ? "Rookies not on the board yet" : `Board ${201 + 25 * (g - lastB - 1)}–${225 + 25 * (g - lastB - 1)}`])];
+  for (const arr of byB.values()) arr.sort((a, b) => (V.rank.get(a.key) || 999) - (V.rank.get(b.key) || 999));
+  let shown = 0, top = null; const out = [];
+  for (const [n, aLo, aHi, label] of allB) {
+    const arr = (byB.get(n) || []).filter(match), left = arr.filter(p => !taken.has(p.key));
+    if (!left.length) continue;
+    if (shown++ >= bucketsShown) break;
+    if (!top) top = left[0];
+    const adpNow = nNext && aLo != null && nNext >= aLo && nNext <= aHi;
+    const chips = arr.map(p => { const e = EXT.p[p.n], gone = taken.has(p.key), mine = mineSet.has(p.key);
+      const cls = ["bc", e[1] ? "inj" : "", /rookie/.test(p.f || "") || p.extra ? "rook" : "", e[2] ? "punt" : "", gone ? "gone" : "", mine ? "mine" : "",
+        !gone && p.key === sugK ? "sug" : "", !gone && p.key !== sugK && evenK.has(p.key) ? "even" : "", p.key === openChip ? "open" : ""].filter(Boolean).join(" ");
+      const note = reachK.has(p.key) && p.key !== sugK ? ` <small>${reachK.get(p.key)} reach</small>` : e[2] ? ` <small>${esc(e[2])}</small>` : e[1] ? ` <small>${Math.round(p.g * 82)}g</small>` : "";
+      return `<button class="${cls}" data-chip="${esc(p.key)}"${gone ? " disabled" : ""}>${esc(p.n)}<small>${esc(p.pos5 || p.p || "")}</small>${note}</button>`; }).join("");
+    const det = openChip && arr.some(p => p.key === openChip) ? chipDetail(byId.get(openChip) || arr.find(p => p.key === openChip)) : "";
+    out.push(`<div class="bk${adpNow ? " adpnow" : ""}"><h3>${label ? esc(label) : `Bucket ${n}`} <small>${aLo != null ? `ADP ${aLo}–${aHi}` : ""} · ${left.length} left${adpNow ? ` · ADP has this bucket going at your pick #${nNext}` : ""}</small></h3><div class="bchips">${chips}</div>${det}</div>`);
+  }
+  window.__top = top;
+  const legend = `<p class="blegend"><span class="bc sug">suggested</span> <span class="bc even">even with it</span> <span class="bc inj">injury risk, in his healthy bucket</span> <span class="bc rook">rookie</span> <span class="bc punt">value only if you punt</span> <span class="bc mine">yours</span> · green border: ADP has that bucket going at your next pick. Tap a player for his line.</p>`;
+  el.innerHTML = legend + (out.join("") || `<p class="note">No available players match.</p>`) +
+    (shown > bucketsShown ? `<button class="btn more" id="moreBuckets">Show more buckets</button>` : "");
+}
+function chipDetail(p) {
+  if (!p) return "";
+  const s = state.settings, rk = V.rank.get(p.key), z = s.cats.map(c => [c, V.Z[c][p.i]]);
+  const helps = z.filter(x => x[1] >= 0.7).sort((a, b) => b[1] - a[1]).map(x => x[0]), hurts = z.filter(x => x[1] <= -0.7).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  const fills = openSlotMasks().filter(sl => SLOT_MASK[sl] & posMask(p));
+  const fl = (p.f || "").split("; ").filter(Boolean).slice(0, 2).map(esc).join("<br>");
+  return `<div class="bdet"><b>${esc(p.n)}</b> · ${esc(p.pos5 || p.p || "")} · ${esc(p.ct || p.t || "")} · board #${rk ?? "–"} · ADP ${p.adp ?? "–"} · ${Math.round(p.g * 82)} games${p.rr ? ` · range ${p.rr.join("–")}` : ""}${fills.length ? ` · fills ${esc(fills.join("/"))}` : ""}
+    <div>${helps.length ? `<span style="color:var(--pos)">helps ${helps.map(esc).join(" ")}</span>` : ""}${hurts.length ? ` · <span style="color:var(--neg)">hurts ${hurts.map(esc).join(" ")}</span>` : ""}</div>
+    ${fl ? `<div class="sub">${fl}</div>` : ""}
+    <div class="acts"><button class="mine" data-k="${esc(p.key)}" data-mine="1">Mine</button><button class="taken" data-k="${esc(p.key)}">Taken</button><button class="btn" data-chipclose="1">Close</button></div></div>`;
+}
+
 function renderBoard() {
+  const bv = boardView() === "buckets";
+  $("bucketView").hidden = !bv; $("listWrap").hidden = bv; $("sort").hidden = bv;
+  document.querySelectorAll(".viewtog button").forEach(b => b.classList.toggle("on", b.dataset.view === (bv ? "buckets" : "list")));
+  if (bv) { $("more").hidden = true; renderBuckets(); return; }
   const s = state.settings, { cats, punts } = s, prof = teamProfile(), w = weights(prof);
   const taken = new Set(state.picks.map(p => p.k));
   const q = $("q").value.trim().toLowerCase(), posF = $("pos").value, sort = $("sort").value;
@@ -1449,7 +1538,11 @@ async function runCoach() {
       for (const c of picks) Object.assign(c, await evalRuns(bestPunts, c.i, K, K + COACH_SIMS, c.acc));
       for (const [nm, b] of Object.entries(builds)) Object.assign(b, await evalRuns(COACH_BUILDS[nm], null, K, K + COACH_SIMS, b.acc));
       decide(false);
-      publish(K + COACH_SIMS >= COACH_REFINE_TO);
+      // redraw only at the halfway mark and the end: re-ranking every batch reshuffled the card and the board
+      // every few seconds while you were reading it (17 Oct)
+      const k1 = K + COACH_SIMS;
+      if (k1 === COACH_REFINE_TO / 2 || k1 >= COACH_REFINE_TO) publish(k1 >= COACH_REFINE_TO);
+      else $("coachStatus").textContent = `after pick ${state.picks.length} · sharpening ${k1}/${COACH_REFINE_TO} drafts`;
     }
   } catch (e) { if (e !== "stale") throw e; }
 }
@@ -1519,7 +1612,7 @@ function renderCoach(msg) {
   if (!s.slot) { el.innerHTML = `<p class="sub">Set your draft slot in League settings and the coach simulates the rest of the draft after every pick.</p>`; $("coachStatus").textContent = ""; return; }
   if (!coachResult) { el.innerHTML = `<p class="sub">Working out your best path…</p>`; $("coachStatus").textContent = ""; return; }
   const r = coachResult, stale = r.at !== state.picks.length;
-  $("coachStatus").textContent = stale ? "out of date, refresh" : `after pick ${r.at} · ${r.sims} drafts${r.done ? "" : ", sharpening…"}`;
+  $("coachStatus").textContent = stale ? "out of date, refresh" : `after pick ${r.at} · ${r.sims} drafts${r.done ? " · final" : ", sharpening…"}`;
   const bal = r.builds.find(([n]) => n === "Balanced");
   const edge = bal ? 100 * (r.best.po - bal[1].po) : 0;
   const punts = COACH_BUILDS[r.bestName];
@@ -1977,6 +2070,14 @@ function changeSettings(fn, revalue) {
   if (revalue || !coachResult) scheduleCoach(); else renderCoach();
 }
 
+document.querySelector(".viewtog").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (!b) return;
+  try { localStorage.setItem("draftroom.view", b.dataset.view); } catch (er) {} renderBoard(); });
+$("bucketView").addEventListener("click", e => {
+  const k = e.target.closest("button[data-k]"); if (k) { openChip = null; addPick(k.dataset.k, !!k.dataset.mine); return; }
+  if (e.target.closest("[data-chipclose]")) { openChip = null; renderBoard(); return; }
+  if (e.target.closest("#moreBuckets")) { bucketsShown += 6; renderBoard(); return; }
+  const c = e.target.closest("button[data-chip]"); if (c && !c.disabled) { openChip = openChip === c.dataset.chip ? null : c.dataset.chip; renderBoard(); }
+});
 $("tbody").addEventListener("click", e => {
   const b = e.target.closest("button[data-k]");
   if (b) { addPick(b.dataset.k, !!b.dataset.mine); return; }
