@@ -3,7 +3,7 @@
 Fantasy basketball draft tools for a 20-team ESPN H2H 11-cat league (9-cat + 3P% + DD, 10-man rosters).
 
 ## 1. ESPN draft room extension (Chrome, for whoever runs it)
-Adds a side panel to the ESPN draft room that follows the draft by itself. **Best pick (1.5.0)** shows your team in all 11 categories against an average team, then under every option your team *after* taking him, so you can decide on need; add any player to your own shortlist to compare him the same way. Options are grouped by bucket (ESPN's own ranked list is on screen beside it, so the panel shows choices, not a second list), with category balance, the draft buckets ticking off live (pink = injury risk in his healthy bucket, gold = rookie), a league table, and a **Share** tab that broadcasts the draft to the live page below.
+Adds a side panel to the ESPN draft room that follows the draft by itself. **Best pick (1.5.2)** shows your rank in all 11 categories against the league's actual picks (live; each team measured against an average team with the same number of picks), then under every option your ranks *after* taking him, so you can decide on need; add any player to your own shortlist to compare him the same way. Options are grouped by bucket (ESPN's own ranked list is on screen beside it, so the panel shows choices, not a second list), with category balance, the draft buckets ticking off live (pink = injury risk in his healthy bucket, gold = rookie), a league table, and a **Share** tab that broadcasts the draft to the live page below.
 
 1. Download [draft-helper-extension.zip](https://github.com/Cuddles-mc/draft-room/raw/main/draft-helper-extension.zip) and unzip it.
 2. In Chrome go to `chrome://extensions` and turn on **Developer mode** (top right).

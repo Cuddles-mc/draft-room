@@ -291,17 +291,21 @@ window.DraftCore = (() => {
       const fallSet = new Set(fallers.map(p => p.i));
       const fallBox = fallers.length ? `<div class="fallbox"><b>Fallen to you:</b> ${fallers.map(p => `<span class="g-${grp(p)}">${esc(p.n)}</span> <span class="sub">board #${p.r} · ADP ${Math.round(p.adp)}</span>`).join(" · ")}<div class="sub">Expected gone by now. Add him to your shortlist below to see what he does to your team.</div></div>` : "";
       const reach = [["rookie", x => x.p.rk], ["injury", x => x.p.hl]].map(([kind, f]) => { const x = a.all.find(y => f(y) && !inTop.has(y.p.i)); return x ? { ...x, kind } : null; }).filter(Boolean);
-      /* the category grid: your team against an average team after the same number of picks, in every category,
-         now and after each option. Green = ahead, red = behind (sum of per-category scores; TO counts fewer as
-         better). An outlined cell is where that pick turns a weak category round (green outline) or sinks one (red).
-         It is what the pick does to YOUR team, so you can choose on need, not only on the list order. */
+      /* the category grid, LIVE against the league: your rank (1 = best of the S.T teams) in every category, now and
+         after each option, read from every team's actual picks. Each team is measured against an average team with
+         the same number of picks (parZ), so a team holding one more pick mid-round is not counted as ahead. TO counts
+         fewer as better. An outlined cell is a pick that lifts a weak category 4+ places (green) or drops one 4+ (red). */
       const k = a.roster.length, tz = teamZ(a.roster), pzNow = parZ(S, Math.max(1, k)), pzAfter = parZ(S, k + 1);
       const now = CATS.map((c, j) => (k ? tz[j] - pzNow[j] : 0));
-      const shade = v => v >= 1 ? "c2" : v >= 0.3 ? "c1" : v > -0.3 ? "c0" : v > -1 ? "n1" : "n2";
+      const others = S.teams.filter(tm => tm.id !== S.my).map(tm => { const ro = S.rosters.get(tm.id) || [], kt = ro.length;
+        if (!kt) return new Float64Array(NC); const z = teamZ(ro), pz = parZ(S, kt); return z.map((v, j) => v - pz[j]); });
+      const rankOf = vals => vals.map((v, j) => 1 + others.filter(g => g[j] > v + 1e-9).length);
+      const nowRank = rankOf(now), nT = others.length + 1;
+      const shade = r => r <= Math.ceil(nT * 0.2) ? "c2" : r <= Math.ceil(nT * 0.4) ? "c1" : r <= Math.ceil(nT * 0.6) ? "c0" : r <= Math.ceil(nT * 0.8) ? "n1" : "n2";
       const fmt = v => (v >= 0 ? "+" : "") + v.toFixed(1);
-      const grid = (vals, ref) => `<div class="cg">${vals.map((v, j) => { const d = ref ? v - ref[j] : 0;
-        const mk = ref && ref[j] < -0.3 && d >= 0.6 ? " fix" : ref && d <= -0.6 ? " dent" : "";
-        return `<span class="cc ${shade(v)}${mk}" title="${esc(CATS[j])}: ${fmt(v)} vs an average team${ref ? ` (now ${fmt(ref[j])})` : ""}">${fmt(v)}</span>`; }).join("")}</div>`;
+      const grid = (vals, ref) => { const rk = rankOf(vals); return `<div class="cg">${rk.map((r, j) => { const d = ref ? r - ref[j] : 0;
+        const mk = ref && ref[j] > nT / 2 && d <= -4 ? " fix" : ref && d >= 4 ? " dent" : "";
+        return `<span class="cc ${shade(r)}${mk}" title="${esc(CATS[j])}: ${r} of ${nT}${ref ? ` (now ${ref[j]})` : ""} · ${fmt(vals[j])} vs an average team">${r}</span>`; }).join("")}</div>`; };
       const head = `<div class="cg ch">${CATS.map(c => `<span>${esc(c === "FG%" ? "FG" : c === "FT%" ? "FT" : c === "3P%" ? "3P%" : c)}</span>`).join("")}</div>`;
       const afterOf = p => CATS.map((c, j) => tz[j] + p.z[j] - pzAfter[j]);
       const row = ({ p, fit }, rank, kind) => {
@@ -312,7 +316,7 @@ window.DraftCore = (() => {
         const rm = kind === "mine" ? ` <button class="x" data-uncmp="${p.i}" title="Remove from your shortlist">×</button>` : "";
         return `<tr${rank === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${rank === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind === "rookie" || kind === "injury" ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">${p.gp} games</span>` : ""}${fallSet.has(p.i) ? `<span class="tag fall">fallen</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}${rm}
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · ADP ${p.adp ?? "–"}</span></td><td>${fit.toFixed(1)}</td></tr>
-          <tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), now)}</td></tr>`;
+          <tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), nowRank)}</td></tr>`;
       };
       // your own shortlist: anyone you add, compared on the same grid (removed automatically once taken)
       prefs.compare = (prefs.compare || []).filter(i => P[i] && !S.taken.has(i));
@@ -331,10 +335,10 @@ window.DraftCore = (() => {
         ${fallBox}${planLine(S, a, nextPick)}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
-        <div class="teamnow"><b>Your team now</b> <span class="note">vs an average team after ${k} pick${k === 1 ? "" : "s"}: green ahead, red behind</span>${head}${grid(now, null)}</div>
+        <div class="teamnow"><b>Your rank in each category</b> <span class="note">live, against the ${nT} teams' actual picks (1 = best; green top, red bottom)</span>${head}${grid(now, null)}</div>
         ${compareBox}
-        <table class="opts"><thead><tr><th>Rk</th><th>Player · each grid = your team after taking him</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
-        <p class="note">Options by bucket, best Fit first; add anyone to your shortlist with the box above. Under each player: your team in every category if you take him (outlined green = fixes a weak category, outlined red = sinks one). Fit = board value leaning to your weak categories; suggested = top Fit. "Likely gone" = league ADP is before your pick.</p>`;
+        <table class="opts"><thead><tr><th>Rk</th><th>Player · each grid = your category ranks after taking him</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
+        <p class="note">Options by bucket, best Fit first; add anyone to your shortlist with the box above. Under each player: your rank in every category if you take him, against everyone's picks so far (outlined green = lifts a weak category 4+ places, red = drops one 4+). Fit = board value leaning to your weak categories; suggested = top Fit. "Likely gone" = league ADP is before your pick.</p>`;
     }
 
     function team() {
