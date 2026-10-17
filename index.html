@@ -150,8 +150,21 @@ table.even button { padding: 2px 7px; border-radius: 5px; border: 1px solid colo
 .viewtog { display: flex; gap: 6px; margin: 4px 0 8px; }
 .viewtog .btn.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 .bk { --bc: var(--mine); border: 1px solid var(--line); border-left: 6px solid var(--bc); border-radius: 8px; margin-bottom: 8px; background: color-mix(in srgb, var(--bc) 6%, var(--panel)); overflow: hidden; }
-.bk.c0 { --bc: var(--mine); } .bk.c1 { --bc: var(--accent); } .bk.c2 { --bc: var(--pos); } .bk.c3 { --bc: var(--ink); }
-.bk.adpnow { border: 2px solid var(--bc); border-left-width: 6px; }
+.bk { --bc: var(--line); background: var(--panel); border-left-width: 1px; }
+.bk .bchips { padding: 6px 9px 8px; }
+.bc.g-guard, .bc.g-shoot { --gc: var(--mine); } .bc.g-wing, .bc.g-play { --gc: var(--accent); } .bc.g-big { --gc: var(--pos); } .bc.g-score { --gc: var(--ink); }
+.bc[class*="g-"] { color: color-mix(in srgb, var(--gc) 80%, var(--ink)); background: color-mix(in srgb, var(--gc) 13%, var(--panel)); border-color: color-mix(in srgb, var(--gc) 45%, var(--line)); font-weight: 600; }
+.bc.sug { outline: 3px solid var(--ink); outline-offset: 1px; }
+.bc.even { outline: 2px dashed var(--ink); outline-offset: 1px; }
+.bc.open { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink); }
+.mk { font-style: normal; font-size: 10.5px; font-weight: 700; margin-left: 4px; padding: 0 3px; border-radius: 3px; }
+.mk.hurt { color: var(--panel); background: var(--neg); } .mk.rook { color: var(--ink); background: color-mix(in srgb, var(--accent) 35%, var(--panel)); }
+.mk.reach { color: var(--ink); border: 1px solid var(--ink); } .mk.punt { color: var(--muted); border: 1px dashed var(--muted); font-weight: 500; }
+.blegend .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-right: 6px; }
+.blegend .seg button { border: 0; background: var(--panel); padding: 2px 8px; font: 600 12px var(--body); color: var(--muted); }
+.blegend .seg button.on { background: var(--ink); color: var(--panel); }
+.blegend .bc.sug, .blegend .bc.even { padding: 0 6px; }
+.bk.adpnow { border: 2px solid var(--ink); }
 .bk h3 { padding: 6px 9px 4px; background: color-mix(in srgb, var(--bc) 14%, var(--panel)); }
 .br { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 5px 9px; border-top: 1px solid color-mix(in srgb, var(--bc) 18%, var(--line)); cursor: pointer; font-size: 13px; }
 .br .brk { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
@@ -166,15 +179,8 @@ table.even button { padding: 2px 7px; border-radius: 5px; border: 1px solid colo
 .bchips { display: flex; flex-wrap: wrap; gap: 5px; }
 .bc { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 7px; font: 500 12.5px var(--body); cursor: pointer; text-align: left; }
 .bc small { color: var(--muted); font-weight: 400; margin-left: 3px; }
-.bc.inj { background: color-mix(in srgb, var(--neg) 10%, var(--panel)); border-color: color-mix(in srgb, var(--neg) 40%, var(--line)); }
-.bc.rook { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-.bc.punt { border-style: dashed; }
-.bc.even { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
-.bc.sug { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 700; }
-.bc.sug small { color: var(--panel); }
 .bc.gone { text-decoration: line-through; opacity: .45; cursor: default; }
 .bc.mine { background: var(--mine); color: var(--panel); border-color: var(--mine); text-decoration: none; opacity: 1; }
-.bc.open { outline: 2px solid var(--ink); }
 .bdet { margin-top: 7px; padding: 7px 9px; border-radius: 7px; background: var(--soft); font-size: 12.5px; }
 .bdet .acts { margin-top: 6px; display: flex; gap: 6px; }
 .blegend { font-size: 12px; color: var(--muted); margin: 0 0 8px; line-height: 1.6; }
@@ -777,26 +783,39 @@ function renderBuckets() {
     shown++; leftShown += left.length;
     if (!top) top = left[0];
     const adpNow = nNext && aLo != null && nNext >= aLo && nNext <= aHi;
-    // colour-banded list: one coloured group per bucket, available players as rows (taken ones only counted)
-    const rows = left.map(p => { const e = EXT.p[p.n], rk = V.rank.get(p.key);
-      const z = s.cats.map(c => [c, V.Z[c][p.i]]), helps = z.filter(x => x[1] >= 0.7).sort((x, y) => y[1] - x[1]).map(x => x[0]), hurts = z.filter(x => x[1] <= -0.7).sort((x, y) => x[1] - y[1]).map(x => x[0]);
-      const fills = openSlotMasks().filter(sl => SLOT_MASK[sl] & posMask(p));
-      const tags = (p.key === sugK ? `<span class="tag sugtag">suggested</span>` : evenK.has(p.key) ? `<span class="tag coachtag">even</span>` : "") +
-        (reachK.has(p.key) && p.key !== sugK ? `<span class="tag ${reachK.get(p.key) === "rookie" ? "gold" : "hurt"}">${reachK.get(p.key)} reach</span>` : "") +
-        (e && e[1] ? `<span class="tag hurt" title="Injury risk: placed in the bucket of his healthy rank">${Math.round(p.g * 82)} games</span>` : p.g * 82 < 60 ? `<span class="tag warn">${Math.round(p.g * 82)} games</span>` : "") +
-        ((isRookie(p) || p.extra) ? `<span class="tag gold">rookie</span>` : "") + (e && e[2] ? `<span class="tag" title="Only worth this bucket if you punt">${esc(e[2])}</span>` : "") +
-        (fills.length ? `<span class="tag move">fills ${esc(fills.join("/"))}</span>` : "");
-      return `<div class="br${p.key === sugK ? " brsug" : evenK.has(p.key) ? " breven" : ""}${p.key === openChip ? " open" : ""}" data-chip="${esc(p.key)}">
-        <span class="brk">${rk ?? "–"}</span><span class="brn"><b>${esc(p.n)}</b> ${tags}<span class="sub">${esc(p.pos5 || p.p || "")} · ${esc(p.ct || p.t || "")} · ADP ${p.adp != null ? Math.round(p.adp) : "–"}${helps.length ? ` · <span style="color:var(--pos)">${helps.map(esc).join(" ")}</span>` : ""}${hurts.length ? ` · <span style="color:var(--neg)">${hurts.map(esc).join(" ")}</span>` : ""}</span></span>
-        <span class="acts"><button class="mine" data-k="${esc(p.key)}" data-mine="1">Mine</button><button class="taken" data-k="${esc(p.key)}">Taken</button></span></div>`; }).join("");
+    // available names as chips, each coloured by its group (position or type, colourBy), so a bucket can be scanned
+    // for "a big" or "a shooter" at a glance; tap a name for his line and Mine / Taken
+    const rows = `<div class="bchips">${left.map(p => { const e = EXT.p[p.n], g = groupOf(p), hurt = e && e[1] || p.g * 82 < 56;
+      const cls = ["bc", "g-" + g.k, p.key === sugK ? "sug" : evenK.has(p.key) ? "even" : "", p.key === openChip ? "open" : ""].filter(Boolean).join(" ");
+      const mark = (hurt ? `<i class="mk hurt" title="${Math.round(p.g * 82)} projected games">${Math.round(p.g * 82)}g</i>` : "") + ((isRookie(p) || p.extra) ? `<i class="mk rook" title="Rookie">R</i>` : "") +
+        (reachK.has(p.key) && p.key !== sugK ? `<i class="mk reach">${reachK.get(p.key)} reach</i>` : "") + (e && e[2] ? `<i class="mk punt" title="Only worth this bucket if you punt">${esc(e[2])}</i>` : "");
+      return `<button class="${cls}" data-chip="${esc(p.key)}" title="${esc(g.label)}">${esc(p.n)}<small>${esc(p.pos5 || p.p || "")}</small>${mark}</button>`; }).join("")}</div>`;
     const det = openChip && left.some(p => p.key === openChip) ? chipDetail(byId.get(openChip) || left.find(p => p.key === openChip)) : "";
     const gone = arr.length - left.length;
-    out.push(`<div class="bk c${shown % 4}${adpNow ? " adpnow" : ""}"><h3>${label ? esc(label) : `Bucket ${n}`} <small>${aLo != null ? `ADP ${aLo}–${aHi}` : ""}${gone ? ` · ${gone} of ${arr.length} gone` : ""}${adpNow ? ` · ADP has this bucket going at your pick #${nNext}` : ""}</small></h3>${rows}${det}</div>`);
+    out.push(`<div class="bk${adpNow ? " adpnow" : ""}"><h3>${label ? esc(label) : `Bucket ${n}`} <small>${aLo != null ? `ADP ${aLo}–${aHi}` : ""}${gone ? ` · ${gone} of ${arr.length} gone` : ""}${adpNow ? ` · ADP has this bucket going at your pick #${nNext}` : ""}</small></h3>${rows}${det}</div>`);
   }
   window.__top = top;
-  const legend = `<p class="blegend">Each colour is a bucket: players in it are close in value, so pick within it on need. Bold outline: ADP has that bucket going at your next pick. <span class="tag sugtag">suggested</span> and <span class="tag coachtag">even</span> come from the coach. Tap a row for his line.</p>`;
+  const cb = colourBy(), keys = cb === "pos" ? ["guard", "wing", "big"] : ["big", "shoot", "play", "score"];
+  const legend = `<div class="blegend">Colour by <span class="seg"><button data-colour="pos" class="${cb === "pos" ? "on" : ""}">Position</button><button data-colour="type" class="${cb === "type" ? "on" : ""}">Type</button></span>
+    ${keys.map(k => `<span class="bc g-${k}">${GROUP_LABEL[k]}</span>`).join(" ")}
+    <br>Players in a bucket are close in value: pick within it on need. <span class="bc sug">suggested</span> <span class="bc even">even</span> come from the coach; <i class="mk hurt">52g</i> projected games; <i class="mk rook">R</i> rookie. Bold border: ADP has that bucket going at your next pick. Tap a name for his line.</div>`;
   el.innerHTML = legend + (out.join("") || `<p class="note">No available players match.</p>`) +
     (shown > bucketsShown ? `<button class="btn more" id="moreBuckets">Show more buckets</button>` : "");
+}
+/* colour groups for the bucket chips. Position: guards / wings / bigs (any C eligibility is a big, else the first
+   listed position decides). Type: the category family he adds most to, per category in it, from the board's own
+   scores: bigs (REB, BLK, FG%, DD), shooters (3PM, 3P%, FT%), playmakers (AST, STL), scorers (PTS). */
+const colourBy = () => { try { return localStorage.getItem("draftroom.colour") || "pos"; } catch (e) { return "pos"; } };
+const TYPE_FAM = { big: ["REB", "BLK", "FG%", "DD"], shoot: ["3PM", "3P%", "FT%"], play: ["AST", "STL"], score: ["PTS"] };
+const GROUP_LABEL = { guard: "Guard", wing: "Wing", big: "Big", shoot: "Shooter", play: "Playmaker", score: "Scorer" };
+function groupOf(p) {
+  if (colourBy() === "pos") { const ps = (p.pos5 || p.p || "").split("/");
+    const k = ps.includes("C") || p.p === "C" || p.p === "FC" ? "big" : (ps[0] === "PG" || ps[0] === "SG" || p.p === "G") ? "guard" : "wing";
+    return { k, label: GROUP_LABEL[k] }; }
+  const cats = state.settings.cats; let best = "score", bv = -Infinity;
+  for (const [k, fam] of Object.entries(TYPE_FAM)) { const cs = fam.filter(c => cats.includes(c)); if (!cs.length) continue;
+    const v = cs.reduce((a, c) => a + V.Z[c][p.i], 0) / cs.length; if (v > bv) { bv = v; best = k; } }
+  return { k: best === "big" ? "big" : best, label: GROUP_LABEL[best] };
 }
 function chipDetail(p) {
   if (!p) return "";
@@ -807,7 +826,7 @@ function chipDetail(p) {
   return `<div class="bdet"><b>${esc(p.n)}</b> · ${esc(p.pos5 || p.p || "")} · ${esc(p.ct || p.t || "")} · board #${rk ?? "–"} · ADP ${p.adp ?? "–"} · ${Math.round(p.g * 82)} games${p.rr ? ` · range ${p.rr.join("–")}` : ""}${fills.length ? ` · fills ${esc(fills.join("/"))}` : ""}
     <div>${helps.length ? `<span style="color:var(--pos)">helps ${helps.map(esc).join(" ")}</span>` : ""}${hurts.length ? ` · <span style="color:var(--neg)">hurts ${hurts.map(esc).join(" ")}</span>` : ""}</div>
     ${fl ? `<div class="sub">${fl}</div>` : ""}
-    <div class="acts"><button class="btn" data-chipclose="1">Close</button></div></div>`;
+    <div class="acts"><button class="mine" data-k="${esc(p.key)}" data-mine="1">Mine</button><button class="taken" data-k="${esc(p.key)}">Taken</button><button class="btn" data-chipclose="1">Close</button></div></div>`;
 }
 
 function renderBoard() {
@@ -2095,6 +2114,7 @@ document.querySelector(".viewtog").addEventListener("click", e => { const b = e.
 $("bucketView").addEventListener("click", e => {
   const k = e.target.closest("button[data-k]"); if (k) { openChip = null; addPick(k.dataset.k, !!k.dataset.mine); return; }
   if (e.target.closest("[data-chipclose]")) { openChip = null; renderBoard(); return; }
+  const cl = e.target.closest("button[data-colour]"); if (cl) { try { localStorage.setItem("draftroom.colour", cl.dataset.colour); } catch (er) {} renderBoard(); return; }
   if (e.target.closest("#moreBuckets")) { bucketsShown += 6; renderBoard(); return; }
   const c = e.target.closest("[data-chip]"); if (c) { openChip = openChip === c.dataset.chip ? null : c.dataset.chip; renderBoard(); }
 });

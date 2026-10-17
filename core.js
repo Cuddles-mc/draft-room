@@ -129,6 +129,10 @@ window.DraftCore = (() => {
       (avoid.length ? `<div class="sub">Not at this pick: ${avoid.map(esc).join(", ")}</div>` : "") + `<div class="sub">Fit below takes over after your third pick.</div></div>`;
   }
 
+  // colour group by position, the same rule as the Draft Room's buckets: any C eligibility = big, else the first
+  // listed position (PG/SG = guard, SF/PF = wing)
+  const grp = p => { const ps = String(p.p || "").split("/"); return ps.includes("C") ? "big" : (ps[0] === "PG" || ps[0] === "SG") ? "guard" : "wing"; };
+
   function advice(S, teamId) {
     const roster = S.rosters.get(teamId) || [], k = roster.length;
     const tz = teamZ(roster), pz = parZ(S, Math.max(1, k));
@@ -206,7 +210,9 @@ window.DraftCore = (() => {
     .bk h4 span { margin-left: auto; font-weight: 500; color: #5b6578; }
     .bk ul { list-style: none; margin: 0; padding: 4px 8px 6px; columns: 2; column-gap: 10px; }
     .bk li { break-inside: avoid; padding: 1px 0; }
-    .bk li.gone { text-decoration: line-through; color: #9aa5b8; }
+    .g-guard { color: #1f55c4; } .g-wing { color: #b4520f; } .g-big { color: #1d7a43; }
+    .bk li.g-guard, .bk li.g-wing, .bk li.g-big { font-weight: 600; border-left: 3px solid currentColor; padding-left: 4px; }
+    .bk li.gone { text-decoration: line-through; color: #9aa5b8; font-weight: 400; }
     .bk li.mine { color: #2f6fed; font-weight: 700; text-decoration: none; }
     .bk li.punt { color: #b42318; }
     .bk li.rook { background: #fff3c4; border-radius: 3px; padding-left: 3px; }
@@ -266,7 +272,7 @@ window.DraftCore = (() => {
         if (p.adp != null && p.adp < nextPick) risk = `<span class="tag warn" title="League ADP ${p.adp}">likely gone</span>`;
         else if (p.adp != null && after && p.adp < after) risk = `<span class="tag info">won't come back</span>`;
         const fills = open.filter(s => s !== "UTIL" && (SLOT_MASK[s] & p.mask));
-        return `<tr${k === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${k === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}${esc(p.n)}${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">injury risk</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}
+        return `<tr${k === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${k === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">injury risk</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · bucket ${p.b ?? "–"} · ADP ${p.adp ?? "–"}</span>
           <span class="sub"><span class="g">${helps.join(" ")}</span>${hurts.length ? ` · <span class="r">${hurts.join(" ")}</span>` : ""}</span></td><td>${fit.toFixed(1)}</td></tr>`;
       };
@@ -309,12 +315,12 @@ window.DraftCore = (() => {
       const block = (title, sub, members, cls) => {
         const left = members.filter(m => !S.taken.has(m.i)).length;
         const lis = members.map(m => { const p = P[m.i], gone = S.taken.has(p.i);
-          const c = [gone ? "gone" : "", mine.has(p.i) ? "mine" : "", m.punt ? "punt" : "", p.hl ? "hurt" : p.rk ? "rook" : ""].join(" ");
+          const c = ["g-" + grp(p), gone ? "gone" : "", mine.has(p.i) ? "mine" : "", m.punt ? "punt" : "", p.hl ? "hurt" : p.rk ? "rook" : ""].join(" ");
           const tip = gone ? teamName(owner.get(p.i)) : p.hl ? `Injury risk: ${p.gp} projected games, board rank ${p.hp}` : p.rk ? `Rookie: could finish anywhere from #${p.rr || "?"}` : "";
           return `<li class="${c}"${tip ? ` title="${esc(tip)}"` : ""}>${esc(p.n)}${m.punt ? ` (${esc(m.punt)})` : ""}${m.extra ? ` <span class="note">${esc(m.extra)}</span>` : ""}</li>`; }).join("");
         return `<div class="bk ${cls}${left ? "" : " done"}"><h4>${title}<span>${left ? `${sub} · ${left}/${members.length} left` : "all gone"}</span></h4>${left ? `<ul>${lis}</ul>` : ""}</div>`;
       };
-      let html = `<p class="note">Struck through = taken. Blue = yours. Red = only worth that bucket if you punt the category shown. Pink = injury risk, placed where he'd be if healthy all year (number = where his expected games put him). Gold = rookie (could land well above or below). Green outline = league ADP has this bucket going at your next pick.</p>`;
+      let html = `<p class="note"><b class="g-guard">Guards</b>, <b class="g-wing">wings</b> and <b class="g-big">bigs</b> are coloured. Struck through = taken. Blue = yours. Red = only worth that bucket if you punt the category shown. Pink = injury risk, placed where he'd be if healthy all year (number = where his expected games put him). Gold = rookie (could land well above or below). Green outline = league ADP has this bucket going at your next pick.</p>`;
       for (const b of D.buckets) {
         const members = P.filter(p => p.b === b.n).map(p => ({ i: p.i, extra: p.hl ? `${p.hp}+` : "" })).concat(P.filter(p => p.pt && p.pt[0] === b.n).map(p => ({ i: p.i, punt: p.pt[1] })));
         if (members.length) html += block(`Bucket ${b.n}`, `ADP ${b.adpLo}-${b.adpHi}`, members, nxt && nxt >= b.adpLo && nxt <= b.adpHi ? " live" : "");
