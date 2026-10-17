@@ -172,7 +172,13 @@ window.DraftCore = (() => {
     .note { color: #5b6578; font-size: 11.5px; }
     .big { font-size: 13.5px; font-weight: 700; margin: 2px 0 6px; }
     .warnbox { background: #fff4e5; border: 1px solid #f5c48a; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
-    tr.bkhead td { background: #f1f3f7; font-weight: 600; font-size: 11.5px; padding: 3px 6px; color: #445; }
+    tr.bkhead td { font-weight: 600; font-size: 11.5px; padding: 3px 6px; color: #223; }
+    tbody.bg td:first-child { border-left: 5px solid var(--bgc); }
+    tbody.bg tr.bkhead td { background: var(--bgh); }
+    tbody.bg tr:not(.bkhead):not(.sugrow) td { background: var(--bgl); }
+    tbody.bg0 { --bgc: #3b6fd8; --bgh: #dbe6fb; --bgl: #f4f7fe; } tbody.bg1 { --bgc: #c75b1e; --bgh: #f8e1d3; --bgl: #fdf6f1; }
+    tbody.bg2 { --bgc: #2f8a4f; --bgh: #d7efdf; --bgl: #f3faf5; } tbody.bg3 { --bgc: #5b5f73; --bgh: #e3e4ea; --bgl: #f7f7f9; }
+    tbody.bgr { --bgc: #b8941c; --bgh: #f6ecc8; --bgl: #fdf9ec; }
     tr.sugrow td { background: #fff3ea; }
     .tag.sug { background: #c75b1e; color: #fff; border-color: #c75b1e; }
     .planbox { background: #eef4ff; border: 1px solid #a9c2f2; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
@@ -265,8 +271,9 @@ window.DraftCore = (() => {
           <span class="sub"><span class="g">${helps.join(" ")}</span>${hurts.length ? ` · <span class="r">${hurts.join(" ")}</span>` : ""}</span></td><td>${fit.toFixed(1)}</td></tr>`;
       };
       const groups = new Map(); top10.forEach((x, k) => { const b = x.p.b ?? 99; if (!groups.has(b)) groups.set(b, []); groups.get(b).push(row(x, k)); });
-      const rows = [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs]) => `<tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr>${rs.join("")}`).join("") +
-        (reach.length ? `<tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}` : "");
+      // colour bands: each bucket a colour (cycling), so the groups read at a glance beside ESPN's list
+      const rows = [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], k) => `<tbody class="bg bg${k % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr>${rs.join("")}</tbody>`).join("") +
+        (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
       // model users picking before me: who they will most likely take
       const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
       const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b> <span class="sub">(if they follow it: they can still pick for themselves)</span>${before.map(x =>
@@ -276,7 +283,7 @@ window.DraftCore = (() => {
         ${planLine(S, a, nextPick)}${modelsLine}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
-        <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>Rk</th><th>Player</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
         <p class="note">Your options by bucket, best Fit first in each. Fit = board value, leaning toward categories you're behind in; the suggested pick is the top Fit. "Likely gone" = league ADP is before your pick.</p>`;
     }
 
