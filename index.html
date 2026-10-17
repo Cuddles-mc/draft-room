@@ -746,8 +746,11 @@ function renderBoard() {
     const extra = p.extra ? `<span class="tag" title="2026 rookie or no recent NBA stats: placed by expert rank">rookie / no projection</span>` : "";
     const cr = coachResult && coachResult.at === state.picks.length && C ? coachResult.picks.findIndex(c => C.all[c.i].key === p.key) : -1;
     const sugI = cr >= 0 ? coachSuggest(coachResult).i : -1;
-    const coachTag = (sugI >= 0 && C.all[sugI].key === p.key ? `<span class="tag sugtag" title="The coach's suggested pick (see the coach card for why)">suggested</span>` : "") +
-      (cr >= 0 && cr < 3 ? `<span class="tag coachtag" title="Draft coach's lookahead ranking">coach #${cr + 1}${cr && coachResult.picks[cr].tie ? " ≈" : ""}</span>` : "");
+    // one suggested pick; the rest of the coach's even group marked "even" (no order inside a tie: a #1/#2/#3 there
+    // is noise, and showing it beside "suggested" read as two different answers)
+    const isSug = sugI >= 0 && C.all[sugI].key === p.key, inGroup = cr >= 0 && (cr === 0 || coachResult.picks[cr].tie);
+    const coachTag = isSug ? `<span class="tag sugtag" title="The coach's suggested pick (see the coach card for why)">suggested</span>`
+      : inGroup ? `<span class="tag coachtag" title="Level with the suggested pick in the coach's simulations: choose on need">even</span>` : "";
     const fills = openSlots.filter(sl => SLOT_MASK[sl] & posMask(p));
     const fillTag = fills.length ? `<span class="tag move" title="Fills an open starting slot on your team">fills ${esc(fills.join("/"))}</span>` : "";
     const sub = [p.pos5 || p.p, p.ct || p.t, p.a ? Math.floor(p.a) : null].filter(Boolean).join(" · ");
@@ -1493,17 +1496,21 @@ function planTree(pl) {
    1. the plan's pick, when it is the coach's #1 or within its noise: the plan ran 500 drafts per option before the
       draft, the coach a few dozen live, so a tie goes to the plan (17 Oct: the 400-draft coach agreed with it);
    2. the coach's #1 when it beats the plan's pick by more than the noise: this draft has gone differently;
-   3. no plan: a clear #1, or among even options the one least likely to last to your following pick, so the
-      others can still come back to you. */
+   3. no plan: the coach's #1, with one exception: when #1 is likely to still be there at your following pick
+      (LAST_SAFE) and an even option is not (LAST_GONE), take that one now and #1 later. (17 Oct: picking the
+      scarcest even option every time put "suggested" on the coach's #3 when #1 wouldn't come back either.) */
+const LAST_SAFE = 0.5, LAST_GONE = 0.25;
 function coachSuggest(r) {
   const top = r.picks[0], group = r.picks.filter((c, n) => n === 0 || c.tie);
   const pl = r.plan, pc = pl && pl.pick >= 0 ? r.picks.find(c => c.i === pl.pick) : null;
   if (pc && (pc === top || pc.tie)) return { i: pc.i, why: pc === top ? "the plan's pick, and the coach's #1 on this draft" : "the plan's pick, and level with the coach's #1 on this draft (the plan tested it on 500 drafts)" };
   if (pc) return { i: top.i, why: `the coach has the plan's ${C.all[pc.i].n} clearly behind on this draft (${Math.round(100 * (pc.obj - top.obj))} playoff pts over ${r.sims} drafts), so this draft has gone differently from the plan` };
   if (group.length < 2) return { i: top.i, why: `a clear #1 over ${r.sims} drafts` };
-  if (!r.lasts) return { i: top.i, why: "level with the others; your last pick, so the coach's #1" };
-  const sc = group.slice().sort((a, b) => r.lasts[a.i] - r.lasts[b.i] || b.obj - a.obj)[0];
-  return { i: sc.i, why: `level with the others, and the least likely of them to last to your pick #${r.nAfter} (${Math.round(100 * r.lasts[sc.i])}%)` };
+  const L = i => Math.round(100 * r.lasts[i]);
+  if (!r.lasts) return { i: top.i, why: "the coach's #1; the others are level with it, so any of them is fine" };
+  const scarce = r.lasts[top.i] >= LAST_SAFE ? group.filter(c => c !== top && r.lasts[c.i] <= LAST_GONE).sort((a, b) => r.lasts[a.i] - r.lasts[b.i] || b.obj - a.obj)[0] : null;
+  if (scarce) return { i: scarce.i, why: `level with the coach's #1, ${C.all[top.i].n}, who is likely still there at your pick #${r.nAfter} (${L(top.i)}%), while ${C.all[scarce.i].n} is not (${L(scarce.i)}%): take ${C.all[scarce.i].n} now and look for ${C.all[top.i].n} next time` };
+  return { i: top.i, why: `the coach's #1; the others are level with it, so any of them is fine (chance each lasts to #${r.nAfter}: ${group.map(c => `${C.all[c.i].n} ${L(c.i)}%`).join(", ")})` };
 }
 
 function renderCoach(msg) {
