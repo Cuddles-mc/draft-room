@@ -7,6 +7,8 @@
 // player for every pick; only the values differ, and the panel says when the boards differ.
 window.DraftCore = (() => {
   const D = DH_DATA, CATS = D.cats, NC = CATS.length, P = D.players;
+  // shown in the panel so anyone can see which version they are running (bump with the manifest version)
+  const PANEL_VERSION = "1.5.3";
   const RANKED = P.map((_, i) => i).sort((a, b) => P[a].r - P[b].r);
   const SLOT_MASK = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16, G: 3, F: 12, UTIL: 31 };
   const POS_BIT = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16 };
@@ -331,7 +333,7 @@ window.DraftCore = (() => {
         (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
       // (the 'model users picking before you' warning was removed on request, 17 Oct; the League tab still lists them)
       return `<div class="row">${picker("Team", S.my, "my")}</div>
-        <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
+        <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span><span class="note" style="float:right">v${PANEL_VERSION}</span></p>
         ${fallBox}${planLine(S, a, nextPick)}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
@@ -428,7 +430,7 @@ window.DraftCore = (() => {
       body.innerHTML = (views[prefs.tab] ? views[prefs.tab]() : extra[prefs.tab].render(S))
         + (S.unknown.length ? `<p class="note">Not on our board: ${S.unknown.slice(-6).map(esc).join(", ")}</p>` : "")
         + (S.staleBoard ? `<p class="warnbox">The draft host's board was built ${esc(S.staleBoard)}; this one ${esc(D.built)}. Players match, values may differ: refresh this page${opts.mode === "fixed" ? " or update the extension" : ""} to get the latest board.</p>` : "")
-        + `<p class="note" style="margin-top:10px">Board built ${esc(D.built)} · ${D.teams}-team H2H ${NC}-cat (${CATS.join(", ")}).</p>`;
+        + `<p class="note" style="margin-top:10px">Panel v${PANEL_VERSION} · board built ${esc(D.built)} · ${D.teams}-team H2H ${NC}-cat (${CATS.join(", ")}).</p>`;
       if (prefs.tab !== lastTab && prefs.tab === "buckets") {
         const first = body.querySelector(".bk:not(.done)");
         if (opts.mode === "fixed") body.scrollTop = first ? first.offsetTop - body.offsetTop - 6 : 0;
