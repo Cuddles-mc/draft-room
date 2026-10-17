@@ -8,7 +8,7 @@
 window.DraftCore = (() => {
   const D = DH_DATA, CATS = D.cats, NC = CATS.length, P = D.players;
   // shown in the panel so anyone can see which version they are running (bump with the manifest version)
-  const PANEL_VERSION = "1.5.3";
+  const PANEL_VERSION = "1.5.4";
   const RANKED = P.map((_, i) => i).sort((a, b) => P[a].r - P[b].r);
   const SLOT_MASK = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16, G: 3, F: 12, UTIL: 31 };
   const POS_BIT = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16 };
@@ -106,7 +106,7 @@ window.DraftCore = (() => {
      your first three picks when your slot has one (12, 16 or 17 in a 20-team, 10-round league). Fit below has no
      lookahead, and on these picks the plan disagreed with it (e.g. KAT over Duren at 16), so it is shown first.
      Pick 2 and 3 depend on who you took first; if that was off the plan, Fit takes over. */
-  function planLine(S, a, nextPick) {
+  function planLine(S, a, nextPick, prefs) {   // prefs passed in: it is private to each loader (content.js, live.html)
     const PL = D.plan && D.plan[S.slot]; if (!PL || S.T !== 20 || S.R !== 10) return "";
     const step = PL.picks.indexOf(nextPick); if (step < 0) return "";
     const byName = nm => P.find(p => p.n === nm), gone = nm => { const p = byName(nm); return !p || S.taken.has(p.i); };
@@ -334,7 +334,7 @@ window.DraftCore = (() => {
       // (the 'model users picking before you' warning was removed on request, 17 Oct; the League tab still lists them)
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span><span class="note" style="float:right">v${PANEL_VERSION}</span></p>
-        ${fallBox}${planLine(S, a, nextPick)}
+        ${fallBox}${planLine(S, a, nextPick, prefs)}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
         <div class="teamnow"><b>Your rank in each category</b> <span class="note">live, against the ${nT} teams' actual picks (1 = best; green top, red bottom)</span>${head}${grid(now, null)}</div>
