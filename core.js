@@ -8,7 +8,7 @@
 window.DraftCore = (() => {
   const D = DH_DATA, CATS = D.cats, NC = CATS.length, P = D.players;
   // shown in the panel so anyone can see which version they are running (bump with the manifest version)
-  const PANEL_VERSION = "1.5.4";
+  const PANEL_VERSION = "1.5.5";
   const RANKED = P.map((_, i) => i).sort((a, b) => P[a].r - P[b].r);
   const SLOT_MASK = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16, G: 3, F: 12, UTIL: 31 };
   const POS_BIT = { PG: 1, SG: 2, SF: 4, PF: 8, C: 16 };
@@ -287,9 +287,10 @@ window.DraftCore = (() => {
          The top Fit is marked suggested; the best rookie and injury gamble below the top 10 are offered as reaches. */
       const top10 = a.list.slice(0, 10), inTop = new Set(top10.map(x => x.p.i));
       /* fallers: still there although BOTH the board and the league's ADP had him gone well before this pick (board
-         rank and ADP at least 6 before it). Always shown, plan folded or not, because a real drop is the moment to
+         rank and ADP at least 5 picks before the picks already made). Always shown, plan folded or not, because a real drop is the moment to
          rethink the plan; the coach's plan already ranks the usual fallers first. */
-      const fallers = P.filter(p => !S.taken.has(p.i) && p.r && p.adp != null && p.r <= nextPick - 6 && p.adp <= nextPick - 6).sort((x, y) => x.r - y.r).slice(0, 3);
+      // measured against picks actually MADE (S.made), not your next pick: before the draft nobody has "fallen"
+      const fallers = P.filter(p => !S.taken.has(p.i) && p.r && p.adp != null && p.r <= S.made - 5 && p.adp <= S.made - 5).sort((x, y) => x.r - y.r).slice(0, 3);
       const fallSet = new Set(fallers.map(p => p.i));
       const fallBox = fallers.length ? `<div class="fallbox"><b>Fallen to you:</b> ${fallers.map(p => `<span class="g-${grp(p)}">${esc(p.n)}</span> <span class="sub">board #${p.r} · ADP ${Math.round(p.adp)}</span>`).join(" · ")}<div class="sub">Expected gone by now. Add him to your shortlist below to see what he does to your team.</div></div>` : "";
       const reach = [["rookie", x => x.p.rk], ["injury", x => x.p.hl]].map(([kind, f]) => { const x = a.all.find(y => f(y) && !inTop.has(y.p.i)); return x ? { ...x, kind } : null; }).filter(Boolean);
@@ -318,7 +319,7 @@ window.DraftCore = (() => {
         const rm = kind === "mine" ? ` <button class="x" data-uncmp="${p.i}" title="Remove from your shortlist">×</button>` : "";
         return `<tr${rank === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${rank === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind === "rookie" || kind === "injury" ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">${p.gp} games</span>` : ""}${fallSet.has(p.i) ? `<span class="tag fall">fallen</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}${rm}
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · ADP ${p.adp ?? "–"}</span></td><td>${fit.toFixed(1)}</td></tr>
-          <tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), nowRank)}</td></tr>`;
+          ${S.made ? `<tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), nowRank)}</td></tr>` : ""}`;
       };
       // your own shortlist: anyone you add, compared on the same grid (removed automatically once taken)
       prefs.compare = (prefs.compare || []).filter(i => P[i] && !S.taken.has(i));
@@ -328,16 +329,16 @@ window.DraftCore = (() => {
       const compareBox = `<div class="cmp"><input id="cmpIn" list="cmpList" placeholder="Add any player to compare…" autocomplete="off"><datalist id="cmpList">${avail.map(p => `<option value="${esc(p.n)}">`).join("")}</datalist></div>`;
       const groups = new Map(); top10.forEach((x, n) => { const b = x.p.b ?? 99; if (!groups.has(b)) groups.set(b, []); groups.get(b).push(row(x, n)); });
       // colour bands: each bucket a colour (cycling), so the groups read at a glance beside ESPN's list
-      const rows = (shortRows ? `<tbody class="bg bgm"><tr class="bkhead"><td colspan="3">Your shortlist</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${shortRows}</tbody>` : "") +
-        [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], n) => `<tbody class="bg bg${n % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${rs.join("")}</tbody>`).join("") +
-        (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
+      const rows = (shortRows ? `<tbody class="bg bgm"><tr class="bkhead"><td colspan="3">Your shortlist</td></tr>${S.made ? `<tr class="cghead"><td></td><td colspan="2">${head}</td></tr>` : ""}${shortRows}</tbody>` : "") +
+        [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], n) => `<tbody class="bg bg${n % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr>${S.made ? `<tr class="cghead"><td></td><td colspan="2">${head}</td></tr>` : ""}${rs.join("")}</tbody>`).join("") +
+        (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr>${S.made ? `<tr class="cghead"><td></td><td colspan="2">${head}</td></tr>` : ""}${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
       // (the 'model users picking before you' warning was removed on request, 17 Oct; the League tab still lists them)
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span><span class="note" style="float:right">v${PANEL_VERSION}</span></p>
         ${fallBox}${planLine(S, a, nextPick, prefs)}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
-        <div class="teamnow"><b>Your rank in each category</b> <span class="note">live, against the ${nT} teams' actual picks (1 = best; green top, red bottom)</span>${head}${grid(now, null)}</div>
+        <div class="teamnow"><b>Your rank in each category</b> <span class="note">live, against the ${nT} teams' actual picks (1 = best; green top, red bottom)</span>${S.made ? head + grid(now, null) : `<div class="note" style="margin-top:4px">Starts once picks are made: before then every team is empty, so ranks mean nothing.</div>`}</div>
         ${compareBox}
         <table class="opts"><thead><tr><th>Rk</th><th>Player · each grid = your category ranks after taking him</th><th title="Value plus a lean toward your weak categories">Fit</th></tr></thead>${rows}</table>
         <p class="note">Options by bucket, best Fit first; add anyone to your shortlist with the box above. Under each player: your rank in every category if you take him, against everyone's picks so far (outlined green = lifts a weak category 4+ places, red = drops one 4+). Fit = board value leaning to your weak categories; suggested = top Fit. "Likely gone" = league ADP is before your pick.</p>`;
