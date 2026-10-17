@@ -11,7 +11,7 @@ Adds a side panel to the ESPN draft room that follows the draft by itself. **Bes
 4. Open the ESPN draft room (practice drafts and mock drafts work too). The panel appears top right; pick your team if it asks.
 5. To share: **Share** tab → tick **Broadcast this draft** → copy the link (or each team's personal link) to the group chat.
 
-**Plan (1.3.3):** at your first three picks, **Best pick** shows the pre-draft plan for slots 12, 16 and 17 (500 simulated drafts per option): the pick to take now, buckets of even picks at each pick, and the route for each first pick. Fit takes over after that.
+**Plan (1.5.1):** at your first three picks, **Best pick** shows the pre-draft plan for slots 12, 16 and 17 (500 simulated drafts per option) as one line: the plan's pick and the next two if he's gone. Tap it for the buckets and routes. Fit takes over after that. **Fallen to you** (always shown): anyone still there although both the board and the league's ADP had him gone at least 6 picks earlier.
 
 **Model users:** the **League** tab lists the teams that have this model's advice (slots 12 and 17 by default; tick or untick teams there). **Best pick** then shows what the model would take for them before your next pick. They still pick for themselves, so it is a warning about who may not be there, not a certainty.
 

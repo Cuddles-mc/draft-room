@@ -115,18 +115,22 @@ window.DraftCore = (() => {
     const route = (first, g, hl) => `<div class="pbr${hl ? " pbhl" : ""}"><b>#${PL.picks[0]} ${esc(first)}</b>${hl ? " <span class=\"sub\">(suggested route)</span>" : ""}
       <div>#${PL.picks[1]} ${buckets(g.p2)}</div><div>#${PL.picks[2]} ${buckets(g.p3)}</div></div>`;
     const firstLeft = list => (list.find(([nm]) => !gone(nm)) || [])[0];
-    const head = `<div class="planbox"><b>The plan: your first three picks</b> <span class="sub">(500 simulated drafts per option before the draft; each box is a bucket of even picks, best first)</span>`;
+    // collapsed by default to one line (the plan's pick and the next two if he's gone); tap to open the full plan.
+    // Open/closed is remembered (prefs.planOpen) because the panel re-renders on every pick.
+    const head = (pick, list) => { const alts = list.map(x => x[0]).filter(nm => !gone(nm) && nm !== pick).slice(0, 2);
+      return `<details class="planbox"${prefs.planOpen ? " open" : ""}><summary><b>Plan #${nextPick}: ${esc(pick || "none left, use Fit")}</b>${alts.length ? ` <span class="sub">if gone: ${alts.map(esc).join(", ")}</span>` : ""}</summary>
+        <div class="sub" style="margin-top:4px">500 simulated drafts per option before the draft; each box is a bucket of even picks, best first.</div>`; };
     if (step === 0) {
       const pick = firstLeft(PL.prio);
       const routes = PL.prio.filter(([nm]) => PL.groups[nm]).map(([nm]) => route(nm, PL.groups[nm], nm === pick)).join("");
-      return head + `<div>Take now: <b>${esc(pick || "none left: use Fit")}</b></div><div>#${PL.picks[0]} ${buckets(PL.prio)}</div>` +
-        (PL.avoid.length ? `<div class="sub">Not at this pick: ${PL.avoid.filter(nm => !gone(nm)).map(esc).join(", ")}</div>` : "") + routes + `</div>`;
+      return head(pick, PL.prio) + `<div>#${PL.picks[0]} ${buckets(PL.prio)}</div>` +
+        (PL.avoid.length ? `<div class="sub">Not at this pick: ${PL.avoid.filter(nm => !gone(nm)).map(esc).join(", ")}</div>` : "") + routes + `</details>`;
     }
     const first = a.roster.length ? P[a.roster[0]].n : null, g = first ? PL.groups[first] : null;
     if (!g) return `<p class="note">Plan: your first pick wasn't one the plan covered, so use Fit below from here.</p>`;
     const list = step === 1 ? g.p2 : g.p3, pick = firstLeft(list), avoid = (step === 1 ? g.avoid2 : g.avoid3).filter(nm => !gone(nm) && !list.some(x => x[0] === nm));
-    return head + `<div>Take now: <b>${esc(pick || "none left: use Fit")}</b></div>` + route(first, g, true) +
-      (avoid.length ? `<div class="sub">Not at this pick: ${avoid.map(esc).join(", ")}</div>` : "") + `<div class="sub">Fit below takes over after your third pick.</div></div>`;
+    return head(pick, list) + route(first, g, true) +
+      (avoid.length ? `<div class="sub">Not at this pick: ${avoid.map(esc).join(", ")}</div>` : "") + `<div class="sub">Fit below takes over after your third pick.</div></details>`;
   }
 
   // colour group by position, the same rule as the Draft Room's buckets: any C eligibility = big, else the first
@@ -197,6 +201,9 @@ window.DraftCore = (() => {
     tbody.bgr { --bgc: #b8941c; --bgh: #f6ecc8; --bgl: #fdf9ec; }
     tr.sugrow td { background: #fff3ea; }
     .tag.sug { background: #c75b1e; color: #fff; border-color: #c75b1e; }
+    .fallbox { background: #fff0f0; border: 2px solid #d9534f; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+    .tag.fall { background: #d9534f; color: #fff; border-color: #d9534f; }
+    details.planbox summary { cursor: pointer; }
     .planbox { background: #eef4ff; border: 1px solid #a9c2f2; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
     .planbox .pb { display: inline-block; padding: 0 5px; margin: 1px 0; border: 1px solid #c9d6ee; border-radius: 4px; background: #fff; }
     .planbox .pb1 { border-color: #6f95e0; font-weight: 600; }
@@ -277,6 +284,12 @@ window.DraftCore = (() => {
          list is on screen beside this panel, so this view is for choosing among options rather than a second list.
          The top Fit is marked suggested; the best rookie and injury gamble below the top 10 are offered as reaches. */
       const top10 = a.list.slice(0, 10), inTop = new Set(top10.map(x => x.p.i));
+      /* fallers: still there although BOTH the board and the league's ADP had him gone well before this pick (board
+         rank and ADP at least 6 before it). Always shown, plan folded or not, because a real drop is the moment to
+         rethink the plan; the coach's plan already ranks the usual fallers first. */
+      const fallers = P.filter(p => !S.taken.has(p.i) && p.r && p.adp != null && p.r <= nextPick - 6 && p.adp <= nextPick - 6).sort((x, y) => x.r - y.r).slice(0, 3);
+      const fallSet = new Set(fallers.map(p => p.i));
+      const fallBox = fallers.length ? `<div class="fallbox"><b>Fallen to you:</b> ${fallers.map(p => `<span class="g-${grp(p)}">${esc(p.n)}</span> <span class="sub">board #${p.r} · ADP ${Math.round(p.adp)}</span>`).join(" · ")}<div class="sub">Expected gone by now. Add him to your shortlist below to see what he does to your team.</div></div>` : "";
       const reach = [["rookie", x => x.p.rk], ["injury", x => x.p.hl]].map(([kind, f]) => { const x = a.all.find(y => f(y) && !inTop.has(y.p.i)); return x ? { ...x, kind } : null; }).filter(Boolean);
       /* the category grid: your team against an average team after the same number of picks, in every category,
          now and after each option. Green = ahead, red = behind (sum of per-category scores; TO counts fewer as
@@ -297,7 +310,7 @@ window.DraftCore = (() => {
         else if (p.adp != null && after && p.adp < after) risk = `<span class="tag info">won't come back</span>`;
         const fills = open.filter(s => s !== "UTIL" && (SLOT_MASK[s] & p.mask));
         const rm = kind === "mine" ? ` <button class="x" data-uncmp="${p.i}" title="Remove from your shortlist">×</button>` : "";
-        return `<tr${rank === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${rank === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind === "rookie" || kind === "injury" ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">${p.gp} games</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}${rm}
+        return `<tr${rank === 0 && !kind ? ` class="sugrow"` : ""}><td>${p.r}</td><td class="n">${rank === 0 && !kind ? `<span class="tag sug">suggested</span>` : ""}${kind === "rookie" || kind === "injury" ? `<span class="tag ${kind === "rookie" ? "gold" : "hurt"}">${kind} reach</span>` : ""}<span class="g-${grp(p)}">${esc(p.n)}</span>${p.rk ? `<span class="tag gold" title="Rookie: range ${esc(p.rr || "?")}">rookie</span>` : ""}${p.hl ? `<span class="tag hurt" title="${p.gp} projected games">${p.gp} games</span>` : ""}${fallSet.has(p.i) ? `<span class="tag fall">fallen</span>` : ""}${fills.length ? `<span class="tag ok">fills ${fills.join("/")}</span>` : ""}${risk}${rm}
           <span class="sub">${esc(p.p)} · ${esc(p.t || "")} · ADP ${p.adp ?? "–"}</span></td><td>${fit.toFixed(1)}</td></tr>
           <tr class="cgrow${rank === 0 && !kind ? " sugrow" : ""}"><td></td><td colspan="2">${grid(afterOf(p), now)}</td></tr>`;
       };
@@ -312,13 +325,10 @@ window.DraftCore = (() => {
       const rows = (shortRows ? `<tbody class="bg bgm"><tr class="bkhead"><td colspan="3">Your shortlist</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${shortRows}</tbody>` : "") +
         [...groups].sort((x, y) => x[0] - y[0]).map(([b, rs], n) => `<tbody class="bg bg${n % 4}"><tr class="bkhead"><td colspan="3">${b === 99 ? "Beyond the buckets" : `Bucket ${b}`}</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${rs.join("")}</tbody>`).join("") +
         (reach.length ? `<tbody class="bg bgr"><tr class="bkhead"><td colspan="3">Reaches: upside, at a cost in Fit</td></tr><tr class="cghead"><td></td><td colspan="2">${head}</td></tr>${reach.map(x => row(x, 1, x.kind)).join("")}</tbody>` : "");
-      // model users picking before me: who they will most likely take
-      const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
-      const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b> <span class="sub">(if they follow it: they can still pick for themselves)</span>${before.map(x =>
-        `<br>${esc(teamName(x.id))} (#${x.l.n}): likely ${x.l.list.map(p => esc(p.n)).join(" · ")}`).join("")}</div>` : "";
+      // (the 'model users picking before you' warning was removed on request, 17 Oct; the League tab still lists them)
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
-        ${planLine(S, a, nextPick)}${modelsLine}
+        ${fallBox}${planLine(S, a, nextPick)}
         ${top ? `<p class="note">Highest bucket left: <b>Bucket ${top.n}</b>: ${top.left.slice(0, 4).map(i => esc(P[i].n)).join(", ")}${top.left.length > 4 ? "…" : ""}</p>` : ""}
         ${lineupHtml(a.roster, S.R - D.slots.length)}
         <div class="teamnow"><b>Your team now</b> <span class="note">vs an average team after ${k} pick${k === 1 ? "" : "s"}: green ahead, red behind</span>${head}${grid(now, null)}</div>
@@ -426,6 +436,7 @@ window.DraftCore = (() => {
         opts.save(); render(true); });
       const si = body.querySelector("#slotIn"); if (si) si.onchange = () => { const v = +si.value; if (v >= 1 && v <= S.T) { prefs.slot = v; opts.save(); render(true); } };
       body.querySelectorAll("a[data-view]").forEach(a => a.onclick = e => { e.preventDefault(); prefs.view = a.dataset.view; prefs.tab = "team"; opts.save(); render(true); });
+      const pb = body.querySelector("details.planbox"); if (pb) pb.ontoggle = () => { if (!!prefs.planOpen !== pb.open) { prefs.planOpen = pb.open; opts.save(); } };
       const ci = body.querySelector("#cmpIn"); if (ci) ci.onchange = () => { const p = P.find(x => x.n === ci.value.trim()); if (!p) return;
         prefs.compare = [...new Set([...(prefs.compare || []), p.i])]; opts.save(); render(true); };
       body.querySelectorAll("button[data-uncmp]").forEach(b => b.onclick = () => { prefs.compare = (prefs.compare || []).filter(i => i !== +b.dataset.uncmp); opts.save(); render(true); });
