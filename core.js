@@ -223,7 +223,7 @@ window.DraftCore = (() => {
       }).join("");
       // model users picking before me: who they will most likely take
       const before = S.models.map(id => ({ id, l: likelyFor(S, id) })).filter(x => x.l && x.l.n < nextPick && x.l.list.length);
-      const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b>${before.map(x =>
+      const modelsLine = before.length ? `<div class="warnbox"><b>Model users picking before you</b> <span class="sub">(if they follow it: they can still pick for themselves)</span>${before.map(x =>
         `<br>${esc(teamName(x.id))} (#${x.l.n}): likely ${x.l.list.map(p => esc(p.n)).join(" · ")}`).join("")}</div>` : "";
       return `<div class="row">${picker("Team", S.my, "my")}</div>
         <p class="big">Next pick: #${nextPick} <span class="note">(${away <= 0 ? "on the clock now" : away + " picks away"} · slot ${S.slot})</span></p>
@@ -280,8 +280,8 @@ window.DraftCore = (() => {
         return `<tr><td class="n">${esc(teamName(id))}<span class="sub">slot ${S.slotOf(id) ?? "?"}${l ? ` · next pick #${l.n}` : ""}</span></td><td>${!l ? `<span class="note">${S.slotOf(id) ? "no picks left" : "slot not known yet"}</span>` : l.list.map(p => esc(p.n)).join("<br>")}</td></tr>`; }).join("");
       const ticks = S.teams.filter(t => t.id !== S.my).map(t => `<label style="white-space:nowrap"><input type="checkbox" data-model="${esc(t.id)}"${S.models.includes(t.id) ? " checked" : ""}> ${esc(t.name)}${S.slotOf(t.id) ? ` (${S.slotOf(t.id)})` : ""}</label>`).join(" ");
       return `<p class="big">Model users</p>
-        ${rows ? `<table><thead><tr><th>Team</th><th>Most likely next</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="note">None watched yet.</p>`}
-        <p class="note">Teams drafting off a model like this one pick predictably: these are their top three by the same Fit as Best pick, for their roster, leaving out players ADP has gone before their pick. Tick the teams to watch${(D.modelSlots || []).length ? ` (default: slots ${D.modelSlots.join(" and ")})` : ""}:</p>
+        ${rows ? `<table><thead><tr><th>Team</th><th>If they follow the model</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="note">None watched yet.</p>`}
+        <p class="note">Teams with this model's advice: these are its top three for their roster, by the same Fit as Best pick, leaving out players ADP has gone before their pick. They pick for themselves, so treat it as roughly a coin flip that they take one of these, not a certainty. Tick the teams to watch${(D.modelSlots || []).length ? ` (default: slots ${D.modelSlots.join(" and ")})` : ""}:</p>
         <div class="row">${ticks}</div>`;
     }
 

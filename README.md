@@ -11,7 +11,7 @@ Adds a side panel to the ESPN draft room that follows the draft by itself: best 
 4. Open the ESPN draft room (practice drafts and mock drafts work too). The panel appears top right; pick your team if it asks.
 5. To share: **Share** tab → tick **Broadcast this draft** → copy the link (or each team's personal link) to the group chat.
 
-**Model users (1.3.0):** the **League** tab lists the teams that draft from this same model (slots 12 and 17 by default; tick or untick teams there). **Best pick** then warns which players those teams are likely to take before your next pick, so you know who won't be there.
+**Model users (1.3.1):** the **League** tab lists the teams that have this model's advice (slots 12 and 17 by default; tick or untick teams there). **Best pick** then shows what the model would take for them before your next pick. They still pick for themselves, so it is a warning about who may not be there, not a certainty.
 
 **The board (17 Oct):** values come from the Draft Room's refined board: injuries, depth charts, every preseason box score (starters with the regulars count as starters, rookies included), and a check against the CBS and FantasyPros season minutes. Players keep their positions in `data.js`, so a host and the live page stay in step even on different builds; if they differ, the panel says so.
 
@@ -21,6 +21,6 @@ Open the link the host shares (`https://cuddles-mc.github.io/draft-room/live.htm
 **Put it on your phone like an app:** iPhone: Safari → Share → *Add to Home Screen*. Android: Chrome menu → *Install app* / *Add to Home screen*. It reopens your draft and team.
 
 ## 3. Draft room page (manual)
-https://cuddles-mc.github.io/draft-room/ — mark picks yourself; saves in your browser. Its **Reading the room** card reads how each team is drafting, and shows the likely next picks of any team you mark as a model user.
+https://cuddles-mc.github.io/draft-room/ — mark picks yourself; saves in your browser. Its **Reading the room** card reads how each team is drafting, and has a **Leans on a model** setting for a team that has the advice but picks for itself: it starts 60% likely to follow the model and its own picks move that either way.
 
 Updates travel through ntfy.sh, a free public relay: anyone with the link can see the picks; nothing else is sent.

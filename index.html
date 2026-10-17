@@ -329,7 +329,7 @@ const SETTINGS_VER = 2;   // bump when the league settings defaults change: rese
 const GFC_BITS = { G: 3, F: 12, C: 16 };
 // ways a team can be drafting, read live from its picks (see "reading the room" below)
 const ROOM_STYLES = ["adp", "experts", "value", "coach", "casual"];
-const ROOM_LABEL = { adp: "ADP", experts: "Expert ranks", value: "Board value", coach: "Uses a model", casual: "Casual" };
+const ROOM_LABEL = { adp: "ADP", experts: "Expert ranks", value: "Board value", coach: "Uses a model", casual: "Casual", lean: "Leans on a model" };
 
 const players = DATA.players;                      // projected players
 const extras = DATA.extras || [];                  // listed by ESPN but no projection (e.g. 2026 rookies)
@@ -389,7 +389,7 @@ function normalize(s) {
   if (!(Number.isFinite(st.modelWeight) && st.modelWeight >= 0 && st.modelWeight <= 1)) st.modelWeight = 0.4;
   st.adapt = st.adapt !== false;
   const sov = {};   // team index -> style you've told the coach, overriding the read
-  if (st.styleOv && typeof st.styleOv === "object") for (const [t, v] of Object.entries(st.styleOv)) if (/^\d+$/.test(t) && ROOM_STYLES.includes(v)) sov[t] = v;
+  if (st.styleOv && typeof st.styleOv === "object") for (const [t, v] of Object.entries(st.styleOv)) if (/^\d+$/.test(t) && (ROOM_STYLES.includes(v) || v === "lean")) sov[t] = v;
   st.styleOv = sov;
   const picks = (Array.isArray(s.picks) ? s.picks : []).filter(p => p && typeof p.k === "string").map(p => ({ k: p.k, mine: !!p.mine, ...(p.sim ? { sim: true } : {}) }));
   const cleanPicks = arr => (Array.isArray(arr) ? arr : []).filter(p => p && typeof p.k === "string").map(p => ({ k: p.k, mine: !!p.mine, ...(p.sim ? { sim: true } : {}) }));
@@ -836,7 +836,7 @@ function roomSummary(read) {
   const s = state.settings, me = s.slot - 1, cnt = {};
   read.forEach(r => { if (r.t === me) return; const st = r.ov || (s.adapt && r.n ? r.top : "adp"); cnt[st] = (cnt[st] || 0) + 1; });
   const readN = read.filter(r => r.t !== me && r.n && !r.ov).length;
-  const punting = read.filter(r => r.t !== me && r.punts.length && (r.ov || (s.adapt && r.n)) && (r.ov || r.top) === "coach")
+  const punting = read.filter(r => r.t !== me && r.punts.length && (r.ov || (s.adapt && r.n)) && (r.ov === "lean" || (r.ov || r.top) === "coach"))
     .map(r => `T${r.t + 1} punting ${r.punts.join("+")}`);
   return Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([st, c]) => `${ROOM_LABEL[st]} ${c}`).join(" · ") +
     (s.adapt ? ` (most likely styles; ${readN} read from picks)` : " (adapting is off: unread teams follow ADP)") +
@@ -858,22 +858,24 @@ function renderRoom() {
     // before their turn: leave out anyone less than 35% likely to last to that pick (the board's "Here" maths)
     if (nx > nNow) for (let i = 0; i < C.N; i++) if (av[i] && availability(C.all[i], nNow, [nx]).at[0] < 0.35) av[i] = 0;
     for (let j = 0; j < 3; j++) { const i = coachPick(live.rosters[r.t], av, r.punts); if (i < 0) break; top.push(i); av[i] = 0; }
-    return top.length ? `<span class="likely" title="What a coach like yours takes for this team now; players taken before #${nx} drop off">#${nx}: likely ${top.map(i => esc(C.all[i].n)).join(" · ")}</span>` : "";
+    const lean = r.ov === "lean";
+    return top.length ? `<span class="likely" title="What a coach like yours takes for this team now; players taken before #${nx} drop off${lean ? ". It can still pick for itself" : ""}">#${nx}: ${lean ? "if it follows the model" : "likely"} ${top.map(i => esc(C.all[i].n)).join(" · ")}</span>` : "";
   };
   $("roomSub").textContent = nRead ? `${nRead} of ${rows.length} teams read` : "waiting for picks";
   const opt = (v, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${v ? esc(ROOM_LABEL[v]) : "Read from picks"}</option>`;
   el.innerHTML = `<ol class="room">${rows.map(r => {
     const p1 = r.post[r.top], p2 = r.post[r.second];
-    const what = r.ov ? `<b>${esc(ROOM_LABEL[r.ov])}</b><span class="sub"> · set by you</span>`
+    const what = r.ov === "lean" ? `<b>${esc(ROOM_LABEL.lean)}</b><span class="sub"> · set by you · model ${Math.round(100 * r.post.coach)}%${r.n ? " after its picks" : " before picks"}</span>`
+      : r.ov ? `<b>${esc(ROOM_LABEL[r.ov])}</b><span class="sub"> · set by you</span>`
       : !r.n ? `<span class="sub">No picks yet · simulated by ADP</span>`
       : `<b>${esc(ROOM_LABEL[r.top])}</b> ${Math.round(100 * p1)}%${p2 >= 0.15 ? `<span class="sub"> · ${esc(ROOM_LABEL[r.second])} ${Math.round(100 * p2)}%</span>` : ""}`;
     // in a mock the seats' real styles are known: show them so you can see how well the read works
     const truth = actual && actual[r.t] ? `<span class="sub"> · actually ${esc(ROOM_LABEL[actual[r.t]] || actual[r.t])}</span>` : "";
-    const model = (r.ov || r.top) === "coach" && (r.ov || (r.n && p1 >= 0.5));
+    const model = r.ov === "lean" ? r.post.coach >= 0.25 : (r.ov || r.top) === "coach" && (r.ov || (r.n && p1 >= 0.5));
     const build = r.punts.length ? `<span class="sub" title="Read from its roster: well below par in these after ${r.n} picks"> · punting ${esc(r.punts.join(" + "))}</span>` : "";
     return `<li class="room-row${model ? " model" : ""}"><span class="rt" title="Draft slot">T${r.t + 1}</span>
-      <span class="rw">${what}${truth}${build}${model ? likelyFor(r) : ""}<span class="rbar"><span style="width:${r.ov ? 100 : r.n ? Math.round(100 * p1) : 0}%"></span></span></span>
-      <select data-styleov="${r.t}" aria-label="How team ${r.t + 1} drafts">${opt("", r.ov || "")}${ROOM_STYLES.map(st => opt(st, r.ov)).join("")}</select></li>`;
+      <span class="rw">${what}${truth}${build}${model ? likelyFor(r) : ""}<span class="rbar"><span style="width:${r.ov === "lean" ? Math.round(100 * r.post.coach) : r.ov ? 100 : r.n ? Math.round(100 * p1) : 0}%"></span></span></span>
+      <select data-styleov="${r.t}" aria-label="How team ${r.t + 1} drafts">${opt("", r.ov || "")}${[...ROOM_STYLES, "lean"].map(st => opt(st, r.ov)).join("")}</select></li>`;
   }).join("")}</ol>`;
 }
 
@@ -1082,7 +1084,8 @@ function coachPick(roster, avail, punts) {
    ordering the pick sat gives a likelihood, from RANK_P below; a team's style odds are ROOM_PRIOR times
    those likelihoods. The coach then simulates each team by its odds. Three choices to know:
    - A team with no picks yet is still simulated by ADP, the coach's old assumption, so pre-draft advice
-     does not move until there is evidence. A style you set by hand wins over the read, picks or not.
+     does not move until there is evidence. A style you set by hand wins over the read, picks or not,
+     except "Leans on a model", which only changes the prior (LEAN_PRIOR below).
    - Likelihoods are tempered (ROOM_TEMPER) because one team's picks are not independent evidence: the
      same need or favourite can explain several of them, and untempered odds went to 99% too fast.
    - RANK_P was measured, not guessed: simulated drafts of each style, rank of the pick under that
@@ -1090,6 +1093,14 @@ function coachPick(roster, avail, punts) {
      opponent styles in oppPick change, or the read and the sims will disagree about what a style looks like. */
 const ROOM_PRIOR = { adp: 0.38, experts: 0.2, value: 0.17, coach: 0.1, casual: 0.15 };
 const ROOM_TEMPER = 0.8, ROOM_EPS = 0.03;
+/* "Leans on a model" (set by hand): a team you think has this model's advice but picks for itself (Oct 2026: two
+   seats in this league use it, and nobody follows advice blindly). It is still READ from its picks, just from a
+   coach-heavy prior (LEAN_PRIOR) instead of the room's, so its own picks can confirm or overturn it, and it is
+   simulated even before it has picked. When the draw makes it a model user, each of its picks follows the model
+   LEAN_FOLLOW of the time and is otherwise its own near-ADP pick: the same 70/30 mix RANK_P's "coach" row was
+   measured with, so the read and the simulation agree about what such a team looks like. */
+const LEAN_PRIOR = { adp: 0.15, experts: 0.08, value: 0.07, coach: 0.6, casual: 0.1 };
+const LEAN_FOLLOW = 0.7;
 // P(pick sat at rank 1..10 of the style's own order), bands: rounds 1-2, 3-5, 6+. Measured on 150 simulated
 // drafts of the mock styles (oppPick), then mixed 15% (30% for "coach") with the ADP table so a human who
 // strays from a pure style is not ruled out by one pick. Ranks past 10 share the leftover mass.
@@ -1129,7 +1140,8 @@ function readRoom() {
   const sig = [state.picks.map(p => p.k + (p.mine ? "*" : "")).join(), s.teams, s.slot, s.cats.join(), s.modelWeight, s.balance,
                JSON.stringify(s.gpOv), JSON.stringify(s.styleOv), C.N].join("|");
   if (roomCache.sig === sig) return roomCache.read;
-  const T = s.teams, logp = Array.from({ length: T }, () => ROOM_STYLES.map(st => Math.log(ROOM_PRIOR[st]))), n = new Array(T).fill(0);
+  const T = s.teams, n = new Array(T).fill(0);
+  const logp = Array.from({ length: T }, (_, t) => ROOM_STYLES.map(st => Math.log((s.styleOv[t] === "lean" ? LEAN_PRIOR : ROOM_PRIOR)[st])));
   const avail = new Uint8Array(C.N).fill(1), rosters = Array.from({ length: T }, () => []);
   const fixed = {}; for (const st of ["adp", "experts", "value"]) fixed[st] = styleScores(st);
   let nAvail = C.N;
@@ -1156,15 +1168,16 @@ function readRoom() {
   return read;
 }
 /* the style each opponent plays in simulated draft k: your override, else a draw from its read odds
-   (seeded by k and team, so every option the coach compares meets the same room), else ADP */
+   (seeded by k and team, so every option the coach compares meets the same room), else ADP. A "lean" team is
+   always drawn from its odds, picks or not, and a model draw plays it as "lean" (mostly the model, sometimes not) */
 function simStyles(k, read) {
   const s = state.settings, me = s.slot - 1;
   return read.map(({ t, n, post, ov }) => {
     if (t === me) return null;
-    if (ov) return ov;
-    if (!s.adapt || !n) return "adp";
+    if (ov && ov !== "lean") return ov;
+    if (ov !== "lean" && (!s.adapt || !n)) return "adp";
     let u = seeded(104729 * (k + 1) + 31 * t + 7)(), acc = 0;
-    for (const st of ROOM_STYLES) { acc += post[st]; if (u < acc) return st; }
+    for (const st of ROOM_STYLES) { acc += post[st]; if (u < acc) return ov === "lean" && st === "coach" ? "lean" : st; }
     return "adp";
   });
 }
@@ -1180,7 +1193,9 @@ function oppContext(k, read) {
 }
 /* one opponent pick in a simulation. keys = ADP draw for this simulation; skip = a player held back for you */
 function oppChoice(t, avail, rosters, keys, ctx, n, skip) {
-  const N = C.N, style = ctx ? ctx.styles[t] : "adp";
+  const N = C.N; let style = ctx ? ctx.styles[t] : "adp";
+  // a model user picking for itself: this pick follows the model or is its own near-ADP choice (LEAN_FOLLOW)
+  if (style === "lean") style = seeded(ctx.k * 6271 + n * 99991 + t * 13 + 5)() < LEAN_FOLLOW ? "coach" : "casual";
   const argmin = arr => { let b = Infinity, p = -1; for (let i = 0; i < N; i++) if (avail[i] && i !== skip && arr[i] < b) { b = arr[i]; p = i; } return p; };
   if (style === "experts") return argmin(ctx.xk);
   if (style === "value") return argmin(ctx.vk);
